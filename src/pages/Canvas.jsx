@@ -389,15 +389,21 @@ export default function Canvas() {
     }
 
     function tintCanvas(src, hexColor) {
-      if (!src || src.width === 0 || src.height === 0) return src
-      const out = document.createElement('canvas')
-      out.width = src.width; out.height = src.height
-      const ctx = out.getContext('2d')
-      ctx.fillStyle = hexColor
-      ctx.fillRect(0, 0, out.width, out.height)
-      ctx.globalCompositeOperation = 'destination-in'
-      ctx.drawImage(src, 0, 0)
-      return out
+      try {
+        if (!src || !hexColor || src.width === 0 || src.height === 0) return null
+        const out = document.createElement('canvas')
+        out.width = src.width; out.height = src.height
+        const ctx = out.getContext('2d')
+        if (!ctx) return null
+        ctx.fillStyle = hexColor
+        ctx.fillRect(0, 0, out.width, out.height)
+        ctx.globalCompositeOperation = 'destination-in'
+        ctx.drawImage(src, 0, 0)
+        return out
+      } catch (e) {
+        console.warn('[Canvas] tintCanvas failed:', e)
+        return null
+      }
     }
 
     // ── UNSAVED BADGE ─────────────────────────────────────────────────────────
@@ -1671,8 +1677,7 @@ export default function Canvas() {
         startRealtime()
 
       } catch (err) {
-        console.error('[Canvas] Failed to load floor plan:', err)
-        console.error('[Canvas] Error name:', err?.name, '| message:', err?.message, '| stack:', err?.stack)
+        console.error('[Canvas] Init error:', err, err?.stack)
         uzShow('', 'Failed to load floor plan', err.message || 'Check console for details')
       }
     }
