@@ -167,6 +167,7 @@ export default function Canvas() {
       }
       const hlc  = sessionsHL.getContext('2d')
       const penc = sessionsPen.getContext('2d')
+      if (!hlc || !penc) return
       hlc.clearRect(0, 0, img.width, img.height)
       penc.clearRect(0, 0, img.width, img.height)
       activePage.sessions.forEach(s => {
