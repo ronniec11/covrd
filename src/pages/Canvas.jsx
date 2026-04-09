@@ -194,6 +194,8 @@ export default function Canvas() {
     let prevTool        = 'highlight'
     let draftInterval   = null
     let realtimeSub     = null
+    let cachedLivePx    = 0   // pixel count of liveHlCanvas, updated on content change
+    let cachedTotalPx   = 0   // pixel count of all sessions + live, updated on content change
 
     // ── SCALE HELPERS ─────────────────────────────────────────────────────────
     function ppf(n, d) { return (96 * n) / d }
@@ -204,21 +206,23 @@ export default function Canvas() {
       if (v === 'custom') { applyCustomScale(); return }
       if (activePage) {
         const s = SCALES[v]
-        activePage.ppf = activePage.ppi ? (s.n / s.d) * activePage.ppi : ppf(s.n, s.d)
+        const ppi = activePage.ppi || 72 * 3.0
+        activePage.ppf = (s.n / s.d) * ppi
         activePage.scale = v; activePage.calibrated = false
         calibInfoRef.current.style.display = 'none'
       }
-      updateSF()
+      updateSFDisplay()
     }
 
     function applyCustomScale() {
-      const n = parseFloat(cNumerRef.current.value) || 0.125
-      const d = parseFloat(cDenomRef.current.value) || 1
+      const n = parseFloat(cNumerRef.current?.value) || 1
+      const d = parseFloat(cDenomRef.current?.value) || 30
       if (activePage) {
-        activePage.ppf = activePage.ppi ? (n / d) * activePage.ppi : ppf(n, d)
+        const ppi = activePage.ppi || 72 * 3.0
+        activePage.ppf = (n / d) * ppi
         activePage.scale = 'custom'; activePage.calibrated = false
       }
-      updateSF()
+      updateSFDisplay()
     }
 
     // ── PAGE MANAGEMENT ───────────────────────────────────────────────────────
@@ -761,8 +765,16 @@ export default function Canvas() {
       if (liveHlCanvas.width > 0 && tc) tc.drawImage(liveHlCanvas, 0, 0)
       const d = tc.getImageData(0, 0, tmp.width, tmp.height).data
       let tot = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) tot++
-      hdrSessionRef.current.textContent = Math.round(toSF(countPx(liveHlCanvas))).toLocaleString()
-      hdrTotalRef.current.textContent   = Math.round(toSF(tot)).toLocaleString()
+      cachedTotalPx = tot
+      cachedLivePx  = countPx(liveHlCanvas)
+      updateSFDisplay()
+    }
+
+    // Fast display update using cached pixel counts — no ImageData reads, safe to call on scale changes
+    function updateSFDisplay() {
+      if (!activePage) return
+      hdrSessionRef.current.textContent = Math.round(toSF(cachedLivePx)).toLocaleString()
+      hdrTotalRef.current.textContent   = Math.round(toSF(cachedTotalPx)).toLocaleString()
       updateProgressBar()
     }
 
