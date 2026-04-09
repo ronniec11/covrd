@@ -728,7 +728,7 @@ export default function Canvas() {
       const img = activePage.image
       const tmp = document.createElement('canvas')
       tmp.width = img.width; tmp.height = img.height
-      if (cvs) tmp.getContext('2d').drawImage(cvs, 0, 0)
+      if (cvs) { const tmpCtx = tmp.getContext('2d'); if (tmpCtx && tmp.width > 0) tmpCtx.drawImage(cvs, 0, 0) }
       const d = tmp.getContext('2d').getImageData(0, 0, tmp.width, tmp.height).data
       let c = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) c++
       return c
@@ -819,11 +819,13 @@ export default function Canvas() {
       // Snapshot live canvases
       const snapHL  = document.createElement('canvas')
       snapHL.width  = liveHlCanvas.width;  snapHL.height = liveHlCanvas.height
-      snapHL.getContext('2d').drawImage(liveHlCanvas, 0, 0)
+      const snapHLCtx = snapHL.getContext('2d')
+      if (snapHLCtx && snapHL.width > 0) snapHLCtx.drawImage(liveHlCanvas, 0, 0)
 
       const snapPen = document.createElement('canvas')
       snapPen.width  = livePenCanvas.width; snapPen.height = livePenCanvas.height
-      snapPen.getContext('2d').drawImage(livePenCanvas, 0, 0)
+      const snapPenCtx = snapPen.getContext('2d')
+      if (snapPenCtx && snapPen.width > 0) snapPenCtx.drawImage(livePenCanvas, 0, 0)
 
       const snapCount = [...liveCountMarkers]
 
@@ -1133,10 +1135,12 @@ export default function Canvas() {
       const {s} = editTarget
       const newHL  = document.createElement('canvas')
       newHL.width  = liveHlCanvas.width;  newHL.height = liveHlCanvas.height
-      newHL.getContext('2d').drawImage(liveHlCanvas, 0, 0)
+      const newHLCtx = newHL.getContext('2d')
+      if (newHLCtx && newHL.width > 0) newHLCtx.drawImage(liveHlCanvas, 0, 0)
       const newPen = document.createElement('canvas')
       newPen.width = livePenCanvas.width; newPen.height = livePenCanvas.height
-      newPen.getContext('2d').drawImage(livePenCanvas, 0, 0)
+      const newPenCtx = newPen.getContext('2d')
+      if (newPenCtx && newPen.width > 0) newPenCtx.drawImage(livePenCanvas, 0, 0)
       s.hlCanvas = newHL; s.penCanvas = newPen
       s.countMarkers = [...liveCountMarkers]; s.count = liveCountMarkers.length
       s._hidden = false
@@ -1375,7 +1379,9 @@ export default function Canvas() {
         const img = new Image()
         await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = dataUrl })
         const c = document.createElement('canvas'); c.width = img.width; c.height = img.height
-        c.getContext('2d').drawImage(img, 0, 0); return c
+        const cCtx = c.getContext('2d')
+        if (cCtx && c.width > 0) cCtx.drawImage(img, 0, 0)
+        return c
       } catch (e) {
         console.warn('[Canvas] Failed to load canvas from data URL', e)
         return null
@@ -1391,7 +1397,9 @@ export default function Canvas() {
           img.src = url + (url.includes('?') ? '&' : '?') + '_t=' + Date.now()
         })
         const c = document.createElement('canvas'); c.width = img.width; c.height = img.height
-        c.getContext('2d').drawImage(img, 0, 0); return c
+        const cCtx = c.getContext('2d')
+        if (cCtx && c.width > 0) cCtx.drawImage(img, 0, 0)
+        return c
       } catch { return null }
     }
 
@@ -1429,13 +1437,15 @@ export default function Canvas() {
         if (hlCanvas.width !== img.width || hlCanvas.height !== img.height) {
           const tmp = document.createElement('canvas')
           tmp.width = img.width; tmp.height = img.height
-          tmp.getContext('2d').drawImage(hlCanvas, 0, 0, img.width, img.height)
+          const tmpCtx = tmp.getContext('2d')
+          if (tmpCtx && tmp.width > 0) tmpCtx.drawImage(hlCanvas, 0, 0, img.width, img.height)
           hlCanvas = tmp
         }
         if (penCanvas && (penCanvas.width !== img.width || penCanvas.height !== img.height)) {
           const tmp = document.createElement('canvas')
           tmp.width = img.width; tmp.height = img.height
-          tmp.getContext('2d').drawImage(penCanvas, 0, 0, img.width, img.height)
+          const tmpCtx = tmp.getContext('2d')
+          if (tmpCtx && tmp.width > 0) tmpCtx.drawImage(penCanvas, 0, 0, img.width, img.height)
           penCanvas = tmp
         }
         if (!penCanvas) {
@@ -1512,7 +1522,9 @@ export default function Canvas() {
           const img = activePage.image
           if (hlCanvas.width !== img.width || hlCanvas.height !== img.height) {
             const tmp = document.createElement('canvas'); tmp.width = img.width; tmp.height = img.height
-            tmp.getContext('2d').drawImage(hlCanvas, 0, 0, img.width, img.height); hlCanvas = tmp
+            const tmpCtx = tmp.getContext('2d')
+            if (tmpCtx && tmp.width > 0) tmpCtx.drawImage(hlCanvas, 0, 0, img.width, img.height)
+            hlCanvas = tmp
           }
           if (!penCanvas) { penCanvas = document.createElement('canvas'); penCanvas.width = img.width; penCanvas.height = img.height }
           const date = row.date || getCurrentDate()
@@ -1616,7 +1628,8 @@ export default function Canvas() {
           const canvasHeight = Math.floor(imageHeight * scaleFactor)
           const scaled = document.createElement('canvas')
           scaled.width = canvasWidth; scaled.height = canvasHeight
-          scaled.getContext('2d').drawImage(img, 0, 0, canvasWidth, canvasHeight)
+          const scaledCtx = scaled.getContext('2d')
+          if (scaledCtx && scaled.width > 0) scaledCtx.drawImage(img, 0, 0, canvasWidth, canvasHeight)
           img = scaled
           if (ppi) ppi = ppi * scaleFactor
         }
