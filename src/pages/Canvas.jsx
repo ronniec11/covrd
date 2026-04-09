@@ -171,7 +171,8 @@ export default function Canvas() {
       penc.clearRect(0, 0, img.width, img.height)
       activePage.sessions.forEach(s => {
         if (s._hidden || !s.hlCanvas) return
-        hlc.drawImage(tintCanvas(s.hlCanvas, s.color), 0, 0)
+        const tinted = tintCanvas(s.hlCanvas, s.color)
+        if (tinted) hlc.drawImage(tinted, 0, 0)
       })
       activePage.sessions.forEach(s => {
         if (s.penCanvas && !s._hidden) penc.drawImage(s.penCanvas, 0, 0)
@@ -303,7 +304,10 @@ export default function Canvas() {
       hlCtx.save(); hlCtx.translate(p.x, p.y); hlCtx.scale(z, z)
       hlCtx.globalAlpha = 0.30
       if (soloSession) {
-        if (soloSession.hlCanvas) hlCtx.drawImage(tintCanvas(soloSession.hlCanvas, soloSession.color), 0, 0)
+        if (soloSession.hlCanvas) {
+          const tinted = tintCanvas(soloSession.hlCanvas, soloSession.color)
+          if (tinted) hlCtx.drawImage(tinted, 0, 0)
+        }
       } else {
         if (sessionsHL.width > 0) hlCtx.drawImage(sessionsHL, 0, 0)
         if (liveHlCanvas.width > 0) hlCtx.drawImage(liveHlCanvas, 0, 0)
@@ -385,6 +389,7 @@ export default function Canvas() {
     }
 
     function tintCanvas(src, hexColor) {
+      if (!src || src.width === 0 || src.height === 0) return src
       const out = document.createElement('canvas')
       out.width = src.width; out.height = src.height
       const ctx = out.getContext('2d')
