@@ -278,9 +278,17 @@ export default function Canvas() {
     function resetView() {
       if (!activePage) return
       const img = activePage.image
-      const z = Math.min(cW / img.width, cH / img.height) * 0.95
+      const currentW = wrap.clientWidth
+      const currentH = wrap.clientHeight
+      cW = currentW
+      cH = currentH
+      const z = Math.min(currentW / img.width, currentH / img.height) * 0.95
       activePage.zoom = z
-      activePage.pan = {x: (cW - img.width * z) / 2, y: (cH - img.height * z) / 2}
+      activePage.pan = {
+        x: (currentW - img.width * z) / 2,
+        y: (currentH - img.height * z) / 2,
+      }
+      redrawAll()
     }
 
     // ── DRAW ─────────────────────────────────────────────────────────────────
@@ -1411,6 +1419,8 @@ export default function Canvas() {
 
     async function loadSessionsFromSupabase() {
       console.log('[Canvas] Loading all sessions for page', pageId)
+      // Clear existing sessions to avoid duplicates if this is called more than once
+      if (activePage) activePage.sessions = []
       // Load all sessions (not just today) for persistent markup
       const { data: dbSessions, error } = await supabase
         .from('sessions')
@@ -1782,7 +1792,7 @@ export default function Canvas() {
       const toast = document.getElementById('ct-toast')
       if (toast) toast.remove()
     }
-  }, [pageId, user]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pageId, user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden',fontFamily:'system-ui,sans-serif',background:'#111210',color:'#f0ede6'}}>
