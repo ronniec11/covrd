@@ -318,6 +318,43 @@ export default function ProjectDetail() {
     setEditingPageId(null)
   }
 
+  async function deletePage(page) {
+    if (!confirm(`Delete "${page.name}"? This will also delete all sessions on this page. This cannot be undone.`)) return
+
+    // 1. Delete all sessions for this page
+    await supabase.from('sessions').delete().eq('page_id', page.id)
+
+    // 2. Delete the page record
+    await supabase.from('pages').delete().eq('id', page.id)
+
+    // 3. Delete storage files if present
+    const filesToRemove = []
+    if (page.floor_plan_url && !page.floor_plan_url.startsWith('http')) {
+      filesToRemove.push(page.floor_plan_url)
+    } else if (page.floor_plan_url) {
+      // Extract storage path from public URL
+      const match = page.floor_plan_url.match(/floor-plans\/(.+)$/)
+      if (match) filesToRemove.push(match[1])
+    }
+    if (page.cached_image_url) {
+      const match = page.cached_image_url.match(/floor-plans\/(.+)$/)
+      if (match) filesToRemove.push(match[1])
+    }
+    if (filesToRemove.length > 0) {
+      await supabase.storage.from('floor-plans').remove(filesToRemove)
+    }
+
+    // 4. Update local state
+    setPages(ps => {
+      const remaining = ps.filter(p => p.id !== page.id)
+      if (activePage?.id === page.id) {
+        setActivePage(remaining[0] || null)
+      }
+      return remaining
+    })
+    setTodaySessions(ts => ts.filter(s => s.page_id !== page.id))
+  }
+
   async function loadTodaySessions(pgs) {
     if (!pgs?.length) return
     const { data: sessions, error } = await supabase
@@ -524,13 +561,22 @@ export default function ProjectDetail() {
                         </div>
                       )}
                       {canManage && !isEditingThis && (
-                        <button
-                          onClick={e => { e.stopPropagation(); setEditingPageId(page.id); setEditingPageName(page.name) }}
-                          className="absolute top-1 right-1 p-0.5 rounded bg-black/60 opacity-0 group-hover/tab:opacity-100 transition-opacity"
-                          title="Rename"
-                        >
-                          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z" /></svg>
-                        </button>
+                        <>
+                          <button
+                            onClick={e => { e.stopPropagation(); setEditingPageId(page.id); setEditingPageName(page.name) }}
+                            className="absolute top-1 right-1 p-0.5 rounded bg-black/60 opacity-0 group-hover/tab:opacity-100 transition-opacity"
+                            title="Rename"
+                          >
+                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z" /></svg>
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); deletePage(page) }}
+                            className="absolute top-1 left-1 p-0.5 rounded bg-black/60 opacity-0 group-hover/tab:opacity-100 transition-opacity hover:bg-red-600/80"
+                            title="Delete floor plan"
+                          >
+                            <svg className="w-3 h-3 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                        </>
                       )}
                     </div>
                   )
