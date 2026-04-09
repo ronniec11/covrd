@@ -16,6 +16,16 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Polyfill Promise.withResolvers for Safari and older browsers (used by pdfjs-dist) -->
+    <script>
+      if (typeof Promise.withResolvers === 'undefined') {
+        Promise.withResolvers = function() {
+          let resolve, reject
+          const promise = new Promise((res, rej) => { resolve = res; reject = rej })
+          return { promise, resolve, reject }
+        }
+      }
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
