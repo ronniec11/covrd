@@ -160,7 +160,7 @@ export default function Canvas() {
     function invalidateSessions() { sessionsValid = false }
 
     function rebuildSessionsCache() {
-      if (!activePage || sessionsValid) return
+      if (!activePage || !activePage.image || sessionsValid) return
       const img = activePage.image
       for (const c of [sessionsHL, sessionsPen, sessionsCount]) {
         c.width = img.width; c.height = img.height
@@ -305,8 +305,8 @@ export default function Canvas() {
       if (soloSession) {
         if (soloSession.hlCanvas) hlCtx.drawImage(tintCanvas(soloSession.hlCanvas, soloSession.color), 0, 0)
       } else {
-        hlCtx.drawImage(sessionsHL, 0, 0)
-        hlCtx.drawImage(liveHlCanvas, 0, 0)
+        if (sessionsHL.width > 0) hlCtx.drawImage(sessionsHL, 0, 0)
+        if (liveHlCanvas.width > 0) hlCtx.drawImage(liveHlCanvas, 0, 0)
       }
       hlCtx.restore()
     }
@@ -320,8 +320,8 @@ export default function Canvas() {
       if (soloSession) {
         if (soloSession.penCanvas) penCtx.drawImage(soloSession.penCanvas, 0, 0)
       } else {
-        penCtx.drawImage(sessionsPen, 0, 0)
-        penCtx.drawImage(livePenCanvas, 0, 0)
+        if (sessionsPen.width > 0) penCtx.drawImage(sessionsPen, 0, 0)
+        if (livePenCanvas.width > 0) penCtx.drawImage(livePenCanvas, 0, 0)
       }
       penCtx.restore()
     }
@@ -736,8 +736,8 @@ export default function Canvas() {
       const tmp = document.createElement('canvas')
       tmp.width = activePage.image.width; tmp.height = activePage.image.height
       const tc = tmp.getContext('2d')
-      activePage.sessions.forEach(s => { if (s.hlCanvas) tc.drawImage(s.hlCanvas, 0, 0) })
-      tc.drawImage(liveHlCanvas, 0, 0)
+      activePage.sessions.forEach(s => { if (s.hlCanvas && s.hlCanvas.width > 0) tc.drawImage(s.hlCanvas, 0, 0) })
+      if (liveHlCanvas.width > 0) tc.drawImage(liveHlCanvas, 0, 0)
       const d = tc.getImageData(0, 0, tmp.width, tmp.height).data
       let tot = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) tot++
       hdrSessionRef.current.textContent = Math.round(toSF(countPx(liveHlCanvas))).toLocaleString()
@@ -1648,6 +1648,7 @@ export default function Canvas() {
 
       } catch (err) {
         console.error('[Canvas] Failed to load floor plan:', err)
+        console.error('[Canvas] Error name:', err?.name, '| message:', err?.message, '| stack:', err?.stack)
         uzShow('', 'Failed to load floor plan', err.message || 'Check console for details')
       }
     }
