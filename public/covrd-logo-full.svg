@@ -1,0 +1,45 @@
+<svg viewBox="0 0 480 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="greenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4ade80;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#22c55e;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="greenFade" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4ade80;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4ade80;stop-opacity:0.1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Icon mark -->
+  <rect x="0" y="10" width="90" height="90" rx="18" fill="#1a1a1a"/>
+
+  <!-- Floor plan rooms -->
+  <rect x="14" y="24" width="34" height="28" fill="none" stroke="#2e2e2e" stroke-width="1.2"/>
+  <rect x="48" y="24" width="28" height="28" fill="none" stroke="#2e2e2e" stroke-width="1.2"/>
+  <rect x="14" y="52" width="62" height="28" fill="none" stroke="#2e2e2e" stroke-width="1.2"/>
+
+  <!-- Covered room -->
+  <rect x="15" y="25" width="32" height="26" fill="#4ade80" opacity="0.15"/>
+
+  <!-- Checkmark -->
+  <polyline points="20,38 28,47 44,28" fill="none" stroke="url(#greenGrad)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Corner ticks -->
+  <line x1="10" y1="20" x2="18" y2="20" stroke="#4ade80" stroke-width="1.5" opacity="0.7"/>
+  <line x1="10" y1="20" x2="10" y2="28" stroke="#4ade80" stroke-width="1.5" opacity="0.7"/>
+  <line x1="80" y1="20" x2="72" y2="20" stroke="#4ade80" stroke-width="1.5" opacity="0.7"/>
+  <line x1="80" y1="20" x2="80" y2="28" stroke="#4ade80" stroke-width="1.5" opacity="0.7"/>
+  <line x1="10" y1="90" x2="18" y2="90" stroke="#4ade80" stroke-width="1.5" opacity="0.7"/>
+  <line x1="10" y1="90" x2="10" y2="82" stroke="#4ade80" stroke-width="1.5" opacity="0.7"/>
+  <line x1="80" y1="90" x2="72" y2="90" stroke="#4ade80" stroke-width="1.5" opacity="0.7"/>
+  <line x1="80" y1="90" x2="80" y2="82" stroke="#4ade80" stroke-width="1.5" opacity="0.7"/>
+
+  <!-- Wordmark -->
+  <text x="108" y="74" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="58" font-weight="700" letter-spacing="-2" fill="#f0f0f0">cov<tspan fill="url(#greenGrad)">rd</tspan></text>
+
+  <!-- Underline -->
+  <rect x="108" y="82" width="350" height="2" rx="1" fill="url(#greenFade)"/>
+
+  <!-- Tagline -->
+  <text x="110" y="100" font-family="'Courier New', monospace" font-size="9" letter-spacing="3.5" fill="#555">PRODUCTION TRACKING</text>
+</svg>
