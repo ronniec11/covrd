@@ -38,7 +38,7 @@ export default function Login() {
       <div className="w-full max-w-sm relative">
         {/* Logo */}
         <div className="text-center mb-8">
-          <img src="/covrd-icon.svg" alt="Covrd" className="w-16 h-16 mb-4" />
+          <img src="/covrd-icon.svg" alt="Covrd" className="mb-4 mx-auto block" style={{ width: 72, height: 72 }} />
           <h1 className="text-2xl font-bold text-white tracking-tight">Covrd</h1>
           <p className="text-muted text-sm mt-1">Production Tracking</p>
         </div>
