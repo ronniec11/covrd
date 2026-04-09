@@ -196,6 +196,7 @@ export default function Canvas() {
     let realtimeSub     = null
     let cachedLivePx    = 0   // pixel count of liveHlCanvas, updated on content change
     let cachedTotalPx   = 0   // pixel count of all sessions + live, updated on content change
+    let cachedTodaySF   = 0   // SF total for today's sessions + live, updated on content change
 
     // ── SCALE HELPERS ─────────────────────────────────────────────────────────
     function ppf(n, d) { return (96 * n) / d }
@@ -767,6 +768,12 @@ export default function Canvas() {
       let tot = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) tot++
       cachedTotalPx = tot
       cachedLivePx  = countPx(liveHlCanvas)
+      // Today's SF = sum of saved session SF values for today + current unsaved work
+      const today = getCurrentDate()
+      cachedTodaySF = activePage.sessions
+        .filter(s => s.date === today && !s._hidden)
+        .reduce((sum, s) => sum + (s.sf || 0), 0)
+        + toSF(cachedLivePx)
       updateSFDisplay()
     }
 
@@ -1240,7 +1247,7 @@ export default function Canvas() {
     function updateProgressBar() {
       const rec    = dayRecords.find(r => r.date === getCurrentDate())
       const target = rec ? rec.target : todayTarget
-      let total = 0; pages.forEach(pg => pg.sessions.forEach(s => { total += s.sf }))
+      const total  = cachedTodaySF  // today's sessions + current unsaved work only
       const pct = target > 0 ? Math.min((total / target) * 100, 100) : 0
       progressFillRef.current.style.width = pct + '%'
       progressFillRef.current.classList.toggle('over', total > target && target > 0)
