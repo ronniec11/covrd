@@ -1595,6 +1595,21 @@ export default function Canvas() {
           await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url })
         }
 
+        // Limit canvas dimensions to prevent memory issues on large images/PDFs
+        const MAX_CANVAS_DIMENSION = 4096
+        const imageWidth  = img.naturalWidth  || img.width
+        const imageHeight = img.naturalHeight || img.height
+        const scaleFactor = Math.min(1, MAX_CANVAS_DIMENSION / Math.max(imageWidth, imageHeight))
+        if (scaleFactor < 1) {
+          const canvasWidth  = Math.floor(imageWidth  * scaleFactor)
+          const canvasHeight = Math.floor(imageHeight * scaleFactor)
+          const scaled = document.createElement('canvas')
+          scaled.width = canvasWidth; scaled.height = canvasHeight
+          scaled.getContext('2d').drawImage(img, 0, 0, canvasWidth, canvasHeight)
+          img = scaled
+          if (ppi) ppi = ppi * scaleFactor
+        }
+
         addPage(img, pg.name, ppi)
 
         // Cache PDF render as PNG for faster future loads
