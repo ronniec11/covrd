@@ -1623,21 +1623,38 @@ export default function Canvas() {
             img.onload = resolve; img.onerror = reject
             img.crossOrigin = 'anonymous'; img.src = pg.cached_image_url
           })
-          ppi = pg.ppi || 72 * Math.max(3.0, DPR * 1.5)
+          ppi = pg.ppi || 72 * Math.max(4.0, DPR * 2.0)
         } else if (isPdf) {
           uzShow('', 'Loading floor plan…', 'Rendering PDF…')
-          const RENDER_SCALE = Math.max(3.0, DPR * 1.5)
+          const RENDER_SCALE = Math.max(4.0, DPR * 2.0)
           const pdfjsLib = await import('pdfjs-dist')
           const { default: pdfWorkerUrl } = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
           pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
           const pdfDoc = await pdfjsLib.getDocument({ url, withCredentials: false }).promise
-          const page = await pdfDoc.getPage(1)
-          const viewport = page.getViewport({ scale: RENDER_SCALE })
-          ppi = 72 * RENDER_SCALE
+          const pageCount = pdfDoc.numPages
+
+          // Collect all pages and calculate combined dimensions
+          const pdfPages = []
+          let totalHeight = 0, maxWidth = 0
+          for (let i = 1; i <= pageCount; i++) {
+            const p = await pdfDoc.getPage(i)
+            const vp = p.getViewport({ scale: RENDER_SCALE })
+            pdfPages.push({ page: p, viewport: vp })
+            totalHeight += vp.height
+            maxWidth = Math.max(maxWidth, vp.width)
+          }
+
+          // Render all pages stacked vertically onto one canvas
           const offscreen = document.createElement('canvas')
-          offscreen.width = viewport.width; offscreen.height = viewport.height
-          await page.render({ canvasContext: offscreen.getContext('2d'), viewport }).promise
+          offscreen.width = maxWidth; offscreen.height = totalHeight
+          const offCtx = offscreen.getContext('2d')
+          let yOffset = 0
+          for (const { page, viewport } of pdfPages) {
+            await page.render({ canvasContext: offCtx, viewport, transform: [1, 0, 0, 1, 0, yOffset] }).promise
+            yOffset += viewport.height
+          }
           img = offscreen
+          ppi = 72 * RENDER_SCALE
         } else {
           img = new Image()
           await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url })
