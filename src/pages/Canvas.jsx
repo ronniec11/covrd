@@ -747,8 +747,8 @@ export default function Canvas() {
       const tmp = document.createElement('canvas')
       tmp.width = activePage.image.width; tmp.height = activePage.image.height
       const tc = tmp.getContext('2d')
-      activePage.sessions.forEach(s => { if (s.hlCanvas && s.hlCanvas.width > 0) tc.drawImage(s.hlCanvas, 0, 0) })
-      if (liveHlCanvas.width > 0) tc.drawImage(liveHlCanvas, 0, 0)
+      activePage.sessions.forEach(s => { if (s.hlCanvas && s.hlCanvas.width > 0 && tc) tc.drawImage(s.hlCanvas, 0, 0) })
+      if (liveHlCanvas.width > 0 && tc) tc.drawImage(liveHlCanvas, 0, 0)
       const d = tc.getImageData(0, 0, tmp.width, tmp.height).data
       let tot = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) tot++
       hdrSessionRef.current.textContent = Math.round(toSF(countPx(liveHlCanvas))).toLocaleString()
@@ -1666,19 +1666,32 @@ export default function Canvas() {
           calibInfoRef.current.textContent = 'Calibrated: ' + savedPPF.toFixed(1) + ' px/ft'
         }
 
-        console.log('[Canvas] About to load sessions, activePage:', activePage?.id, 'image size:', activePage?.image?.width, 'x', activePage?.image?.height)
-        await loadSessionsFromSupabase()
-
-        // Restore draft after sessions loaded
-        loadDraft()
-
-        // Start autosave + realtime
-        draftInterval = setInterval(saveDraft, 30000)
-        startRealtime()
-
       } catch (err) {
         console.error('[Canvas] Init error:', err, err?.stack)
         uzShow('', 'Failed to load floor plan', err.message || 'Check console for details')
+        return
+      }
+
+      // Sessions, draft, and realtime run outside the floor plan try/catch
+      // so errors here never trigger the "Failed to load floor plan" overlay
+      try {
+        console.log('[Canvas] About to load sessions, activePage:', activePage?.id, 'image size:', activePage?.image?.width, 'x', activePage?.image?.height)
+        await loadSessionsFromSupabase()
+      } catch (err) {
+        console.error('[Canvas] Session load error:', err, err?.stack)
+      }
+
+      try {
+        loadDraft()
+      } catch (err) {
+        console.error('[Canvas] Draft load error:', err, err?.stack)
+      }
+
+      try {
+        draftInterval = setInterval(saveDraft, 30000)
+        startRealtime()
+      } catch (err) {
+        console.error('[Canvas] Realtime start error:', err, err?.stack)
       }
     }
 
