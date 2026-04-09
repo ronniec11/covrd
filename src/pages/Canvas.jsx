@@ -127,6 +127,7 @@ export default function Canvas() {
     let soloSession    = null
     let userProfile    = null   // fetched once in init()
     let dbProjectId    = null   // from page record
+    const deletedSessionIds = new Set()
 
     let calibrating   = false
     let calibPt1      = null
@@ -907,12 +908,17 @@ export default function Canvas() {
       }
     }
 
-    function deleteSession(pgId, sId, e) {
+    async function deleteSession(pgId, sId, e) {
       e.stopPropagation()
       const pg = pages.find(p => p.id === pgId); if (!pg) return
+      const sess = pg.sessions.find(s => s.id === sId)
       pg.sessions = pg.sessions.filter(s => s.id !== sId)
       if (soloSession?.id === sId) soloSession = null
       invalidateSessions(); redrawAll(); renderSessions(); updateSF()
+      if (sess?.supabaseId) {
+        deletedSessionIds.add(sess.supabaseId)
+        await supabase.from('sessions').delete().eq('id', sess.supabaseId)
+      }
     }
 
     function toggleSolo(sess) {
@@ -1435,6 +1441,7 @@ export default function Canvas() {
 
       console.log('[Canvas] Loading', dbSessions.length, 'sessions')
       for (const dbSess of dbSessions) {
+        if (deletedSessionIds.has(dbSess.id)) continue
         let hlCanvas = null, penCanvas = null
 
         if (dbSess.highlight_data) {
@@ -1520,6 +1527,7 @@ export default function Canvas() {
         }, async payload => {
           const row = payload.new
           if (row.user_id === user.id) return  // skip our own saves
+          if (deletedSessionIds.has(row.id)) return  // skip re-insertion of deleted sessions
           console.log('[Canvas] Realtime: new session from another user')
           const data = row.strokes
           if (!data) return
