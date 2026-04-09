@@ -170,7 +170,7 @@ export default function Canvas() {
       hlc.clearRect(0, 0, img.width, img.height)
       penc.clearRect(0, 0, img.width, img.height)
       activePage.sessions.forEach(s => {
-        if (s._hidden || !s.hlCanvas) return
+        if (s._hidden || !s.hlCanvas || s.hlCanvas.width === 0) return
         const tinted = tintCanvas(s.hlCanvas, s.color)
         if (tinted) hlc.drawImage(tinted, 0, 0)
       })
@@ -1376,7 +1376,10 @@ export default function Canvas() {
         await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = dataUrl })
         const c = document.createElement('canvas'); c.width = img.width; c.height = img.height
         c.getContext('2d').drawImage(img, 0, 0); return c
-      } catch { return null }
+      } catch (e) {
+        console.warn('[Canvas] Failed to load canvas from data URL', e)
+        return null
+      }
     }
 
     async function loadCanvasFromUrl(url) {
@@ -1417,7 +1420,10 @@ export default function Canvas() {
         }
 
         console.log('[Canvas] Loaded session', dbSess.id, 'hlCanvas:', hlCanvas?.width, 'x', hlCanvas?.height)
-        if (!hlCanvas) continue
+        if (!hlCanvas || hlCanvas.width === 0) {
+          console.warn('[Canvas] Skipping session with invalid hlCanvas:', dbSess.id)
+          continue
+        }
 
         const img = activePage.image
         if (hlCanvas.width !== img.width || hlCanvas.height !== img.height) {
