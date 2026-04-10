@@ -1632,6 +1632,7 @@ export default function Canvas() {
 
       try {
         const isPdf = /\.pdf($|\?)/i.test(url) || url.toLowerCase().includes('.pdf')
+        console.log('[Canvas] floor plan load path:', pg.cached_image_url ? 'CACHED PNG' : isPdf ? 'PDF RENDER' : 'IMAGE')
         let img, ppi = null
 
         if (pg.cached_image_url) {
