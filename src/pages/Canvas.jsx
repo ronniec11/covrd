@@ -1892,7 +1892,7 @@ export default function Canvas() {
         </div>
         <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
           {canvasProfile && (
-            <div style={{display:'flex',alignItems:'center',gap:8,marginRight:4,cursor:'pointer'}} onClick={() => navigate('/profile')}>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginRight:4,cursor:'pointer'}} onClick={() => navigate('/profile', { state: { returnTo: `/canvas/${pageId}` } })}>
               <div style={{width:28,height:28,borderRadius:'50%',background:canvasProfile.avatar_color||'#4ade80',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#000',flexShrink:0}}>
                 {(canvasProfile.full_name||user?.email||'U').charAt(0).toUpperCase()}
               </div>

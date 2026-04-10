@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import Layout from '../components/Layout'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -9,6 +10,9 @@ const PRESET_COLORS = [
 
 export default function Profile() {
   const { profile, updateProfile } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const returnTo = location.state?.returnTo
   const [name, setName] = useState(profile?.full_name || '')
   const [color, setColor] = useState(profile?.avatar_color || '#4ade80')
   const [saving, setSaving] = useState(false)
@@ -24,7 +28,10 @@ export default function Profile() {
     try {
       await updateProfile({ full_name: name.trim(), avatar_color: color })
       setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
+      setTimeout(() => {
+        setSaved(false)
+        navigate(returnTo || '/projects')
+      }, 1000)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -38,6 +45,17 @@ export default function Profile() {
   return (
     <Layout>
       <div className="max-w-lg mx-auto px-4 py-8">
+        {returnTo && (
+          <button
+            onClick={() => navigate(returnTo)}
+            className="flex items-center gap-1.5 text-sm text-muted hover:text-white mb-5 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+            </svg>
+            Back to canvas
+          </button>
+        )}
         <h1 className="text-xl font-bold text-white mb-6">My Profile</h1>
 
         <div className="card mb-4">
