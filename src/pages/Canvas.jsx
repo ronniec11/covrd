@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -27,6 +27,7 @@ export default function Canvas() {
   const { pageId } = useParams()
   const { user } = useAuth()
   const navigate = useNavigate()
+  const [canvasProfile, setCanvasProfile] = useState(null)
 
   const wrapRef          = useRef(null)
   const planRef          = useRef(null)
@@ -1618,6 +1619,7 @@ export default function Canvas() {
       // Fetch user profile for session default name
       const { data: prof } = await supabase.from('profiles').select('full_name, avatar_color').eq('id', user.id).single()
       userProfile = prof
+      setCanvasProfile(prof)
 
       const { data: pg, error: pgErr } = await supabase.from('pages').select('*').eq('id', pageId).single()
       if (pgErr || !pg) { uzShow('', 'Page not found', 'Please go back and try again'); return }
@@ -1888,7 +1890,17 @@ export default function Canvas() {
           <div ref={hdrPctRef} className="ct-stat-val" style={{color:'#3b82f6'}}>–</div>
           <div className="ct-stat-lbl">of target</div>
         </div>
-        <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
+        <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+          {canvasProfile && (
+            <div style={{display:'flex',alignItems:'center',gap:8,marginRight:4}}>
+              <div style={{width:28,height:28,borderRadius:'50%',background:canvasProfile.avatar_color||'#4ade80',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#000',flexShrink:0}}>
+                {(canvasProfile.full_name||user?.email||'U').charAt(0).toUpperCase()}
+              </div>
+              <span style={{fontSize:13,fontWeight:500,color:'#e0e0e0',whiteSpace:'nowrap'}}>
+                {canvasProfile.full_name||user?.email?.split('@')[0]||'User'}
+              </span>
+            </div>
+          )}
           <button className="ct-hbtn" onClick={() => api.current.openHistory?.()}>History</button>
         </div>
       </div>
