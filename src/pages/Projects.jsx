@@ -428,6 +428,7 @@ export default function Projects() {
         .select('*')
         .order('created_at', { ascending: false })
 
+      console.log('[Projects] fetch result:', { count: data?.length, error })
       if (error) throw error
       setProjects(data || [])
 
