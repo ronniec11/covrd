@@ -962,11 +962,17 @@ export default function Canvas() {
         card.className = 'ct-scard' + (soloSession?.id === s.id ? ' solo' : '')
 
         const editBtn = document.createElement('button')
-        editBtn.className = 'ct-scard-edit'; editBtn.title = 'Edit'; editBtn.textContent = 'Edit'
+        editBtn.textContent = '✏️'; editBtn.title = 'Edit'
+        editBtn.style.cssText = 'background:none;border:none;cursor:pointer;padding:2px 4px;font-size:12px;opacity:0.6;'
+        editBtn.onmouseenter = () => { editBtn.style.opacity = '1' }
+        editBtn.onmouseleave = () => { editBtn.style.opacity = '0.6' }
         editBtn.addEventListener('click', ev => openEditModal(pg.id, s.id, ev))
 
         const delBtn = document.createElement('button')
-        delBtn.className = 'ct-scard-del'; delBtn.title = 'Delete'; delBtn.textContent = 'Del'
+        delBtn.textContent = '✕'; delBtn.title = 'Delete'
+        delBtn.style.cssText = 'background:none;border:none;cursor:pointer;padding:2px 4px;font-size:12px;color:#ef4444;opacity:0.6;'
+        delBtn.onmouseenter = () => { delBtn.style.opacity = '1' }
+        delBtn.onmouseleave = () => { delBtn.style.opacity = '0.6' }
         delBtn.addEventListener('click', ev => deleteSession(pg.id, s.id, ev))
 
         const top = document.createElement('div'); top.className = 'ct-scard-top'
