@@ -758,29 +758,24 @@ export default function Canvas() {
 
     function updateSF() {
       if (!activePage) { if (hdrSessionRef.current) hdrSessionRef.current.textContent = '0'; if (hdrTotalRef.current) hdrTotalRef.current.textContent = '0'; return }
-      const tmp = document.createElement('canvas')
-      tmp.width = activePage.image.width; tmp.height = activePage.image.height
-      const tc = tmp.getContext('2d')
-      activePage.sessions.forEach(s => { if (s.hlCanvas && s.hlCanvas.width > 0 && tc) tc.drawImage(s.hlCanvas, 0, 0) })
-      if (liveHlCanvas.width > 0 && tc) tc.drawImage(liveHlCanvas, 0, 0)
-      const d = tc.getImageData(0, 0, tmp.width, tmp.height).data
-      let tot = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) tot++
-      cachedTotalPx = tot
-      cachedLivePx  = countPx(liveHlCanvas)
-      // Today's SF = sum of saved session SF values for today + current unsaved work
-      const today = getCurrentDate()
+      cachedLivePx = countPx(liveHlCanvas)
+      // Total SF = sum of all non-hidden sessions + current unsaved live work
       cachedTodaySF = activePage.sessions
-        .filter(s => s.date === today && !s._hidden)
+        .filter(s => !s._hidden)
         .reduce((sum, s) => sum + (s.sf || 0), 0)
         + toSF(cachedLivePx)
       updateSFDisplay()
     }
 
-    // Fast display update using cached pixel counts — no ImageData reads, safe to call on scale changes
+    // Fast display update — no ImageData reads, safe to call on scale changes
     function updateSFDisplay() {
       if (!activePage) return
-      if (hdrSessionRef.current) hdrSessionRef.current.textContent = Math.round(toSF(cachedLivePx)).toLocaleString()
-      if (hdrTotalRef.current)   hdrTotalRef.current.textContent   = Math.round(toSF(cachedTotalPx)).toLocaleString()
+      const liveSF  = Math.round(toSF(cachedLivePx))
+      const totalSF = Math.round(cachedTodaySF)
+      const pct     = todayTarget > 0 ? Math.round((cachedTodaySF / todayTarget) * 100) : 0
+      if (hdrSessionRef.current) hdrSessionRef.current.textContent = liveSF.toLocaleString()
+      if (hdrTotalRef.current)   hdrTotalRef.current.textContent   = totalSF.toLocaleString()
+      if (hdrPctRef.current)     hdrPctRef.current.textContent     = todayTarget > 0 ? pct + '%' : '–'
       updateProgressBar()
     }
 
@@ -1255,15 +1250,13 @@ export default function Canvas() {
       }, 800)
     }
     function updateProgressBar() {
-      const rec    = dayRecords.find(r => r.date === getCurrentDate())
-      const target = rec ? rec.target : todayTarget
-      const total  = cachedTodaySF  // today's sessions + current unsaved work only
+      const target = todayTarget
+      const total  = cachedTodaySF  // all sessions + current unsaved work
       const pct = target > 0 ? Math.min((total / target) * 100, 100) : 0
-      if (progressFillRef.current)   { progressFillRef.current.style.width = pct + '%'; progressFillRef.current.classList.toggle('over', total > target && target > 0) }
-      if (totalSFsbRef.current)      totalSFsbRef.current.textContent     = Math.round(total).toLocaleString()
-      if (targetDisplayRef.current)  targetDisplayRef.current.textContent = Math.round(target).toLocaleString()
-      if (hdrPctRef.current)         hdrPctRef.current.textContent        = target > 0 ? Math.round((total / target) * 100) + '%' : '–'
-      if (targetInputRef.current)    targetInputRef.current.value         = target || ''
+      if (progressFillRef.current)  { progressFillRef.current.style.width = pct + '%'; progressFillRef.current.classList.toggle('over', total > target && target > 0) }
+      if (totalSFsbRef.current)     totalSFsbRef.current.textContent     = Math.round(total).toLocaleString()
+      if (targetDisplayRef.current) targetDisplayRef.current.textContent = Math.round(target).toLocaleString()
+      if (targetInputRef.current)   targetInputRef.current.value         = target || ''
     }
 
     // ── HISTORY ───────────────────────────────────────────────────────────────
