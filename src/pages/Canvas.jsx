@@ -202,15 +202,16 @@ export default function Canvas() {
     function ppf(n, d) { return (96 * n) / d }
 
     function onScaleChange() {
+      if (!scaleSelectRef.current) return
       const v = scaleSelectRef.current.value
-      customWrapRef.current.style.display = v === 'custom' ? 'flex' : 'none'
+      if (customWrapRef.current) customWrapRef.current.style.display = v === 'custom' ? 'flex' : 'none'
       if (v === 'custom') { applyCustomScale(); return }
       if (activePage) {
         const s = SCALES[v]
         const ppi = activePage.ppi || 72 * 3.0
         activePage.ppf = (s.n / s.d) * ppi
         activePage.scale = v; activePage.calibrated = false
-        calibInfoRef.current.style.display = 'none'
+        if (calibInfoRef.current) calibInfoRef.current.style.display = 'none'
       }
       updateSFDisplay()
     }
@@ -228,7 +229,7 @@ export default function Canvas() {
 
     // ── PAGE MANAGEMENT ───────────────────────────────────────────────────────
     function addPage(img, name, ppiIn) {
-      const sv = scaleSelectRef.current.value
+      const sv = scaleSelectRef.current?.value || '1:8'
       const s  = SCALES[sv] || SCALES['1:8']
       const pg = {
         id: Date.now(), name, image: img,
@@ -275,8 +276,8 @@ export default function Canvas() {
         c.style.display = 'block'
       }
       applyDPRTransform()
-      uploadZoneRef.current.classList.add('hidden')
-      zoomBarRef.current.style.display = 'flex'
+      if (uploadZoneRef.current) uploadZoneRef.current.classList.add('hidden')
+      if (zoomBarRef.current) zoomBarRef.current.style.display = 'flex'
       ensureLive()
       if (!activePage._fitted) { resetView(); activePage._fitted = true }
       redrawAll()
@@ -552,7 +553,7 @@ export default function Canvas() {
     }
 
     function onLeave() {
-      cursorRingRef.current.style.display = 'none'
+      if (cursorRingRef.current) cursorRingRef.current.style.display = 'none'
       drawCtx.clearRect(0, 0, cW, cH)
       if (hoveredMarkerId !== null) { hoveredMarkerId = null; drawCountLayer() }
     }
@@ -702,15 +703,14 @@ export default function Canvas() {
     function startCalib() {
       if (!activePage) { alert('Add a page first.'); return }
       calibrating = true; calibPt1 = null
-      calibBtnRef.current.classList.add('active')
-      calibStatusRef.current.style.display = 'block'
-      calibStatusRef.current.textContent = 'Click point 1 on the plan...'
+      if (calibBtnRef.current) calibBtnRef.current.classList.add('active')
+      if (calibStatusRef.current) { calibStatusRef.current.style.display = 'block'; calibStatusRef.current.textContent = 'Click point 1 on the plan...' }
     }
 
     function cancelCalib() {
       calibrating = false; calibPt1 = null
-      calibBtnRef.current.classList.remove('active')
-      calibStatusRef.current.style.display = 'none'
+      if (calibBtnRef.current) calibBtnRef.current.classList.remove('active')
+      if (calibStatusRef.current) calibStatusRef.current.style.display = 'none'
       drawCtx.clearRect(0, 0, cW, cH)
     }
 
@@ -729,7 +729,7 @@ export default function Canvas() {
 
     function handleCalibClick(sx, sy) {
       const pt = s2i(sx, sy)
-      if (!calibPt1) { calibPt1 = pt; calibStatusRef.current.textContent = 'Click point 2 on the plan...'; return }
+      if (!calibPt1) { calibPt1 = pt; if (calibStatusRef.current) calibStatusRef.current.textContent = 'Click point 2 on the plan...'; return }
       const dx = pt.x - calibPt1.x, dy = pt.y - calibPt1.y
       const px = Math.sqrt(dx * dx + dy * dy)
       const ans = prompt('Enter the real distance between those 2 points in feet:', '')
@@ -738,8 +738,7 @@ export default function Canvas() {
       activePage.calibrated = true
       supabase.from('pages').upsert({ id: pageId, pixels_per_foot: activePage.ppf, calibrated: true })
         .then(({ error }) => { if (error) console.error('[Canvas] Calib save error:', error) })
-      const ci = calibInfoRef.current
-      ci.style.display = 'inline'; ci.textContent = 'Calibrated: ' + activePage.ppf.toFixed(1) + ' px/ft'
+      if (calibInfoRef.current) { calibInfoRef.current.style.display = 'inline'; calibInfoRef.current.textContent = 'Calibrated: ' + activePage.ppf.toFixed(1) + ' px/ft' }
       cancelCalib(); updateSF()
     }
 
@@ -758,7 +757,7 @@ export default function Canvas() {
     function toSF(px) { return activePage ? px / (activePage.ppf * activePage.ppf) : 0 }
 
     function updateSF() {
-      if (!activePage) { hdrSessionRef.current.textContent = '0'; hdrTotalRef.current.textContent = '0'; return }
+      if (!activePage) { if (hdrSessionRef.current) hdrSessionRef.current.textContent = '0'; if (hdrTotalRef.current) hdrTotalRef.current.textContent = '0'; return }
       const tmp = document.createElement('canvas')
       tmp.width = activePage.image.width; tmp.height = activePage.image.height
       const tc = tmp.getContext('2d')
@@ -780,8 +779,8 @@ export default function Canvas() {
     // Fast display update using cached pixel counts — no ImageData reads, safe to call on scale changes
     function updateSFDisplay() {
       if (!activePage) return
-      hdrSessionRef.current.textContent = Math.round(toSF(cachedLivePx)).toLocaleString()
-      hdrTotalRef.current.textContent   = Math.round(toSF(cachedTotalPx)).toLocaleString()
+      if (hdrSessionRef.current) hdrSessionRef.current.textContent = Math.round(toSF(cachedLivePx)).toLocaleString()
+      if (hdrTotalRef.current)   hdrTotalRef.current.textContent   = Math.round(toSF(cachedTotalPx)).toLocaleString()
       updateProgressBar()
     }
 
@@ -789,15 +788,15 @@ export default function Canvas() {
     function setTool(t) {
       if (tool !== 'erase' && t !== 'erase' && t !== 'count') prevTool = t
       tool = t
-      btnHlRef.current.className    = 'ct-tbtn' + (t === 'highlight' ? ' t-hl' : '')
-      btnPenRef.current.className   = 'ct-tbtn' + (t === 'pen'       ? ' t-pen' : '')
-      btnErRef.current.className    = 'ct-tbtn' + (t === 'erase'     ? ' t-er' : '')
-      btnCountRef.current.className = 'ct-tbtn' + (t === 'count'     ? ' t-count' : '')
+      if (btnHlRef.current)    btnHlRef.current.className    = 'ct-tbtn' + (t === 'highlight' ? ' t-hl' : '')
+      if (btnPenRef.current)   btnPenRef.current.className   = 'ct-tbtn' + (t === 'pen'       ? ' t-pen' : '')
+      if (btnErRef.current)    btnErRef.current.className    = 'ct-tbtn' + (t === 'erase'     ? ' t-er' : '')
+      if (btnCountRef.current) btnCountRef.current.className = 'ct-tbtn' + (t === 'count'     ? ' t-count' : '')
     }
 
     function updateBrush() {
-      brushSize = parseInt(brushRangeRef.current.value)
-      brushValRef.current.textContent = brushSize
+      if (brushRangeRef.current) brushSize = parseInt(brushRangeRef.current.value)
+      if (brushValRef.current) brushValRef.current.textContent = brushSize
     }
 
     function pickColor(hex) {
@@ -887,7 +886,7 @@ export default function Canvas() {
       livePenCtx.clearRect(0, 0, livePenCanvas.width, livePenCanvas.height)
       liveCountMarkers = []
       undoStack = []
-      hdrSessionRef.current.textContent = '0'
+      if (hdrSessionRef.current) hdrSessionRef.current.textContent = '0'
 
       // Clear draft from localStorage
       try { localStorage.removeItem(`draft_${pageId}`) } catch {}
@@ -1074,27 +1073,27 @@ export default function Canvas() {
 
     // ── CONTEXT MENU ──────────────────────────────────────────────────────────
     function syncCtxToolBtns() {
-      ctxBtnHlRef.current.className  = 'ct-ctx-tbtn' + (tool === 'highlight' ? ' t-hl' : '')
-      ctxBtnPenRef.current.className = 'ct-ctx-tbtn' + (tool === 'pen'       ? ' t-pen' : '')
-      ctxBtnErRef.current.className  = 'ct-ctx-tbtn' + (tool === 'erase'     ? ' t-er' : '')
+      if (ctxBtnHlRef.current)  ctxBtnHlRef.current.className  = 'ct-ctx-tbtn' + (tool === 'highlight' ? ' t-hl' : '')
+      if (ctxBtnPenRef.current) ctxBtnPenRef.current.className = 'ct-ctx-tbtn' + (tool === 'pen'       ? ' t-pen' : '')
+      if (ctxBtnErRef.current)  ctxBtnErRef.current.className  = 'ct-ctx-tbtn' + (tool === 'erase'     ? ' t-er' : '')
     }
     function ctxSetTool(t) { setTool(t); syncCtxToolBtns(); closeCtxMenu() }
     function ctxBrushChange(val) {
       brushSize = parseInt(val)
-      brushValRef.current.textContent = val
-      brushRangeRef.current.value = val
-      ctxBrushValRef.current.textContent = val
+      if (brushValRef.current) brushValRef.current.textContent = val
+      if (brushRangeRef.current) brushRangeRef.current.value = val
+      if (ctxBrushValRef.current) ctxBrushValRef.current.textContent = val
     }
     function openCtxMenu(x, y) {
-      ctxBrushRef.current.value = brushSize
-      ctxBrushValRef.current.textContent = brushSize
+      if (ctxBrushRef.current) ctxBrushRef.current.value = brushSize
+      if (ctxBrushValRef.current) ctxBrushValRef.current.textContent = brushSize
       ctxColorsRef.current.querySelectorAll('.ct-ctx-cc').forEach((el, i) => el.classList.toggle('sel', COLORS[i] === activeColor))
       syncCtxToolBtns()
       const menu = ctxMenuRef.current; menu.style.display = 'block'
       menu.style.left = Math.min(x, window.innerWidth - 208) + 'px'
       menu.style.top  = Math.min(y, window.innerHeight - 230) + 'px'
     }
-    function closeCtxMenu() { ctxMenuRef.current.style.display = 'none' }
+    function closeCtxMenu() { if (ctxMenuRef.current) ctxMenuRef.current.style.display = 'none' }
 
     // ── EDIT MODAL ────────────────────────────────────────────────────────────
     function openEditModal(pgId, sId, e) {
@@ -1102,18 +1101,19 @@ export default function Canvas() {
       const pg = pages.find(p => p.id === pgId); if (!pg) return
       const s  = pg.sessions.find(x => x.id === sId); if (!s) return
       editTarget = {pg, s}
-      editNameRef.current.value = s.name; editSFRef.current.value = Math.round(s.sf)
+      if (editNameRef.current) editNameRef.current.value = s.name
+      if (editSFRef.current) editSFRef.current.value = Math.round(s.sf)
       if (editCountRef.current) editCountRef.current.textContent = (s.count ?? s.countMarkers?.length ?? 0) + ' items'
-      editColorsRef.current.querySelectorAll('.ct-modal-cc').forEach(el => el.classList.toggle('sel', el.dataset.c === s.color))
-      editModalRef.current.classList.add('open')
+      if (editColorsRef.current) editColorsRef.current.querySelectorAll('.ct-modal-cc').forEach(el => el.classList.toggle('sel', el.dataset.c === s.color))
+      if (editModalRef.current) editModalRef.current.classList.add('open')
     }
-    function closeEditModal() { editModalRef.current.classList.remove('open') }
+    function closeEditModal() { if (editModalRef.current) editModalRef.current.classList.remove('open') }
     function saveEdit() {
       if (!editTarget) return
       const {s} = editTarget
-      const newName = editNameRef.current.value.trim()
-      const newSF   = parseFloat(editSFRef.current.value)
-      const sel     = editColorsRef.current.querySelector('.ct-modal-cc.sel')
+      const newName = editNameRef.current?.value.trim()
+      const newSF   = parseFloat(editSFRef.current?.value)
+      const sel     = editColorsRef.current?.querySelector('.ct-modal-cc.sel')
       if (newName) s.name = newName
       if (!isNaN(newSF) && newSF >= 0) s.sf = newSF
       if (sel) s.color = sel.dataset.c
@@ -1144,8 +1144,9 @@ export default function Canvas() {
       } else {
         setTool('highlight')
       }
-      editBannerRef.current.classList.add('show')
-      editBannerTxtRef.current.textContent = 'Editing: ' + s.name + ' — paint to add more, then tap Update'
+      if (editBannerRef.current) editBannerRef.current.classList.add('show')
+      if (editBannerTxtRef.current) editBannerTxtRef.current.textContent = 'Editing: ' + s.name + ' — paint to add more, then tap Update'
+      if (!footerRef.current) return
       footerRef.current.innerHTML = `
         <button class="ct-fb" id="ct-undo-btn">Undo</button>
         <button class="ct-fb danger" id="ct-cancel-edit-btn">Cancel</button>
@@ -1166,7 +1167,7 @@ export default function Canvas() {
       liveHlCtx.clearRect(0, 0, liveHlCanvas.width, liveHlCanvas.height)
       livePenCtx.clearRect(0, 0, livePenCanvas.width, livePenCanvas.height)
       liveCountMarkers = []; undoStack = []; invalidateSessions()
-      editBannerRef.current.classList.remove('show')
+      if (editBannerRef.current) editBannerRef.current.classList.remove('show')
       restoreFooter(); redrawAll(); updateSF(); renderSessions()
     }
 
@@ -1191,7 +1192,7 @@ export default function Canvas() {
       liveHlCtx.clearRect(0, 0, liveHlCanvas.width, liveHlCanvas.height)
       livePenCtx.clearRect(0, 0, livePenCanvas.width, livePenCanvas.height)
       liveCountMarkers = []; undoStack = []; editingSession = false; editTarget = null
-      invalidateSessions(); editBannerRef.current.classList.remove('show')
+      invalidateSessions(); if (editBannerRef.current) editBannerRef.current.classList.remove('show')
       restoreFooter(); redrawAll(); renderSessions(); updateSF()
       // Persist updated session to Supabase
       if (s.supabaseId) {
@@ -1212,6 +1213,7 @@ export default function Canvas() {
     }
 
     function restoreFooter() {
+      if (!footerRef.current) return
       footerRef.current.innerHTML = `
         <button class="ct-fb" id="ct-undo-btn">Undo</button>
         <button class="ct-fb" id="ct-clear-btn">Clear</button>
@@ -1232,7 +1234,7 @@ export default function Canvas() {
 
     // ── TARGET & PROGRESS ─────────────────────────────────────────────────────
     function updateTarget() {
-      todayTarget = parseFloat(targetInputRef.current.value) || 0
+      todayTarget = parseFloat(targetInputRef.current?.value) || 0
       const rec = dayRecords.find(r => r.date === getCurrentDate())
       if (rec) rec.target = todayTarget
       updateProgressBar()
@@ -1249,12 +1251,11 @@ export default function Canvas() {
       const target = rec ? rec.target : todayTarget
       const total  = cachedTodaySF  // today's sessions + current unsaved work only
       const pct = target > 0 ? Math.min((total / target) * 100, 100) : 0
-      progressFillRef.current.style.width = pct + '%'
-      progressFillRef.current.classList.toggle('over', total > target && target > 0)
-      totalSFsbRef.current.textContent     = Math.round(total).toLocaleString()
-      targetDisplayRef.current.textContent = Math.round(target).toLocaleString()
-      hdrPctRef.current.textContent        = target > 0 ? Math.round((total / target) * 100) + '%' : '–'
-      targetInputRef.current.value         = target || ''
+      if (progressFillRef.current)   { progressFillRef.current.style.width = pct + '%'; progressFillRef.current.classList.toggle('over', total > target && target > 0) }
+      if (totalSFsbRef.current)      totalSFsbRef.current.textContent     = Math.round(total).toLocaleString()
+      if (targetDisplayRef.current)  targetDisplayRef.current.textContent = Math.round(target).toLocaleString()
+      if (hdrPctRef.current)         hdrPctRef.current.textContent        = target > 0 ? Math.round((total / target) * 100) + '%' : '–'
+      if (targetInputRef.current)    targetInputRef.current.value         = target || ''
     }
 
     // ── HISTORY ───────────────────────────────────────────────────────────────
@@ -1284,15 +1285,15 @@ export default function Canvas() {
       saveDayToHistory()
       const now = new Date(); calYear = now.getFullYear(); calMonth = now.getMonth(); calSelectedDate = null
       renderCalendar(); renderCalChart(); renderCalLegend()
-      histModalRef.current.classList.add('open')
+      if (histModalRef.current) histModalRef.current.classList.add('open')
     }
-    function closeHistory() { histModalRef.current.classList.remove('open') }
+    function closeHistory() { if (histModalRef.current) histModalRef.current.classList.remove('open') }
     function calPrevMonth() { calMonth--; if (calMonth < 0) { calMonth = 11; calYear-- }; renderCalendar() }
     function calNextMonth() { calMonth++; if (calMonth > 11) { calMonth = 0; calYear++ }; renderCalendar() }
 
     function renderCalendar() {
       const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
-      calMonthLblRef.current.textContent = MONTHS[calMonth] + ' ' + calYear
+      if (calMonthLblRef.current) calMonthLblRef.current.textContent = MONTHS[calMonth] + ' ' + calYear
       const grid = calGridRef.current; grid.innerHTML = ''
       const firstDay = new Date(calYear, calMonth, 1).getDay()
       const daysInMonth = new Date(calYear, calMonth+1, 0).getDate()
@@ -1685,8 +1686,7 @@ export default function Canvas() {
 
         if (savedPPF && savedCalibrated) {
           activePage.ppf = savedPPF; activePage.calibrated = true
-          calibInfoRef.current.style.display = 'inline'
-          calibInfoRef.current.textContent = 'Calibrated: ' + savedPPF.toFixed(1) + ' px/ft'
+          if (calibInfoRef.current) { calibInfoRef.current.style.display = 'inline'; calibInfoRef.current.textContent = 'Calibrated: ' + savedPPF.toFixed(1) + ' px/ft' }
         }
 
       } catch (err) {
@@ -1773,10 +1773,10 @@ export default function Canvas() {
     window.addEventListener('keydown', e => { if (e.key === 'Escape' && calibrating) cancelCalib() })
     window.addEventListener('resize', onResize)
     document.addEventListener('click', e => {
-      if (ctxMenuRef.current.style.display === 'block' && !ctxMenuRef.current.contains(e.target)) closeCtxMenu()
+      if (ctxMenuRef.current?.style.display === 'block' && !ctxMenuRef.current.contains(e.target)) closeCtxMenu()
     })
-    editModalRef.current.addEventListener('click', e => { if (e.target === editModalRef.current) closeEditModal() })
-    histModalRef.current.addEventListener('click', e => { if (e.target === histModalRef.current) closeHistory() })
+    if (editModalRef.current) editModalRef.current.addEventListener('click', e => { if (e.target === editModalRef.current) closeEditModal() })
+    if (histModalRef.current) histModalRef.current.addEventListener('click', e => { if (e.target === histModalRef.current) closeHistory() })
 
     api.current = {
       setTool, startCalib, cancelCalib,
