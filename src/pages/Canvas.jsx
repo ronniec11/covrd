@@ -1863,16 +1863,16 @@ export default function Canvas() {
         </div>
         <div className="ct-hdiv" />
         <div className="ct-stat-box" style={{minWidth:55}}>
-          <div ref={hdrPctRef} className="ct-stat-val" style={{color:'#facc15'}}>–</div>
+          <div ref={hdrPctRef} className="ct-stat-val" style={{color:'#3b82f6'}}>–</div>
           <div className="ct-stat-lbl">of target</div>
         </div>
         <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
           <button className="ct-hbtn" onClick={() => api.current.openHistory?.()}>History</button>
         </div>
       </div>
-      {/* Total building progress bar — thin blue strip below the header */}
-      <div style={{height:5,background:'#1a1a18',flexShrink:0}}>
-        <div ref={hdrProgressFillRef} style={{height:'100%',background:'#3b82f6',width:'0%',transition:'width 0.4s ease'}} />
+      {/* Total building progress — 4px strip below header */}
+      <div style={{height:4,background:'#1e3a5f',flexShrink:0,overflow:'hidden'}}>
+        <div ref={hdrProgressFillRef} style={{height:4,background:'#3b82f6',width:'0%',borderRadius:2,transition:'width 0.4s ease'}} />
       </div>
 
       <div style={{display:'flex',flex:1,overflow:'hidden',minHeight:0}}>
