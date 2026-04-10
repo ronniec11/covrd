@@ -447,7 +447,7 @@ export default function Projects() {
       if (allPageIds.length === 0) { setSfByProject({}); setSfTodayByProject({}); return }
 
       // Fetch all sessions for those pages in one query
-      const today = new Date().toISOString().split('T')[0]
+      const today = new Date().toLocaleDateString('en-CA')
       const { data: allSessions } = await supabase
         .from('sessions')
         .select('page_id, sf, work_date')

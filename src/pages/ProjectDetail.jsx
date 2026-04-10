@@ -402,8 +402,11 @@ export default function ProjectDetail() {
 
   useEffect(() => { loadData() }, [projectId])
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = new Date().toLocaleDateString('en-CA')
+  console.log('[ProjectDetail] today:', today)
+  console.log('[ProjectDetail] session work_dates:', todaySessions.map(s => s.work_date))
   const todaySF = todaySessions.filter(s => s.work_date === today).reduce((sum, s) => sum + (parseFloat(s.sf) || 0), 0)
+  console.log('[ProjectDetail] todaySF:', todaySF)
   const totalSF = todaySessions.reduce((sum, s) => sum + (parseFloat(s.sf) || 0), 0)
   const pct = project?.daily_sf_target > 0
     ? Math.min(100, Math.round((todaySF / project.daily_sf_target) * 100))
