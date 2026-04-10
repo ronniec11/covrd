@@ -49,9 +49,10 @@ export default function Canvas() {
   const cDenomRef        = useRef(null)
   const calibBtnRef      = useRef(null)
   const calibInfoRef     = useRef(null)
-  const hdrSessionRef    = useRef(null)
-  const hdrTotalRef      = useRef(null)
-  const hdrPctRef        = useRef(null)
+  const hdrSessionRef       = useRef(null)
+  const hdrTotalRef         = useRef(null)
+  const hdrPctRef           = useRef(null)
+  const hdrProgressFillRef  = useRef(null)
   // sidebar
   const btnHlRef         = useRef(null)
   const btnPenRef        = useRef(null)
@@ -184,7 +185,8 @@ export default function Canvas() {
 
     // history
     let dayRecords      = []
-    let todayTarget     = 0
+    let todayTarget       = 0
+    let totalBuildingSF   = 0   // project's total_sf_target, for the header % bar
     let calYear         = 0
     let calMonth        = 0
     let calSelectedDate = null
@@ -770,12 +772,14 @@ export default function Canvas() {
     // Fast display update — no ImageData reads, safe to call on scale changes
     function updateSFDisplay() {
       if (!activePage) return
-      const liveSF  = Math.round(toSF(cachedLivePx))
-      const totalSF = Math.round(cachedTodaySF)
-      const pct     = todayTarget > 0 ? Math.round((cachedTodaySF / todayTarget) * 100) : 0
-      if (hdrSessionRef.current) hdrSessionRef.current.textContent = liveSF.toLocaleString()
-      if (hdrTotalRef.current)   hdrTotalRef.current.textContent   = totalSF.toLocaleString()
-      if (hdrPctRef.current)     hdrPctRef.current.textContent     = todayTarget > 0 ? pct + '%' : '–'
+      const liveSF     = Math.round(toSF(cachedLivePx))
+      const totalSF    = Math.round(cachedTodaySF)
+      const totalPct   = totalBuildingSF > 0 ? Math.round((cachedTodaySF / totalBuildingSF) * 100) : 0
+      const barPct     = totalBuildingSF > 0 ? Math.min((cachedTodaySF / totalBuildingSF) * 100, 100) : 0
+      if (hdrSessionRef.current)      hdrSessionRef.current.textContent      = liveSF.toLocaleString()
+      if (hdrTotalRef.current)        hdrTotalRef.current.textContent        = totalSF.toLocaleString()
+      if (hdrPctRef.current)          hdrPctRef.current.textContent          = totalBuildingSF > 0 ? totalPct + '%' : '–'
+      if (hdrProgressFillRef.current) hdrProgressFillRef.current.style.width = barPct + '%'
       updateProgressBar()
     }
 
@@ -1611,12 +1615,15 @@ export default function Canvas() {
       // Load project target and apply it before the progress bar renders
       const { data: project } = await supabase
         .from('projects')
-        .select('daily_sf_target')
+        .select('daily_sf_target, total_sf_target')
         .eq('id', pg.project_id)
         .single()
       if (project?.daily_sf_target) {
         todayTarget = project.daily_sf_target
         if (targetInputRef.current) targetInputRef.current.value = project.daily_sf_target
+      }
+      if (project?.total_sf_target) {
+        totalBuildingSF = project.total_sf_target
       }
 
       const savedPPF = pg.pixels_per_foot || null
@@ -1862,6 +1869,10 @@ export default function Canvas() {
         <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
           <button className="ct-hbtn" onClick={() => api.current.openHistory?.()}>History</button>
         </div>
+      </div>
+      {/* Total building progress bar — thin blue strip below the header */}
+      <div style={{height:5,background:'#1a1a18',flexShrink:0}}>
+        <div ref={hdrProgressFillRef} style={{height:'100%',background:'#3b82f6',width:'0%',transition:'width 0.4s ease'}} />
       </div>
 
       <div style={{display:'flex',flex:1,overflow:'hidden',minHeight:0}}>
