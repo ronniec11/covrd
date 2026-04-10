@@ -199,7 +199,8 @@ export default function Canvas() {
     let realtimeSub     = null
     let cachedLivePx    = 0   // pixel count of liveHlCanvas, updated on content change
     let cachedTotalPx   = 0   // pixel count of all sessions + live, updated on content change
-    let cachedTodaySF   = 0   // SF total for today's sessions + live, updated on content change
+    let cachedTodaySF   = 0   // SF total for today's sessions + live (used for daily progress bar)
+    let cachedTotalSF   = 0   // SF total for ALL sessions + live (used for Total SF header)
 
     // ── SCALE HELPERS ─────────────────────────────────────────────────────────
     function ppf(n, d) { return (96 * n) / d }
@@ -771,21 +772,28 @@ export default function Canvas() {
     function updateSF() {
       if (!activePage) { if (hdrSessionRef.current) hdrSessionRef.current.textContent = '0'; if (hdrTotalRef.current) hdrTotalRef.current.textContent = '0'; return }
       cachedLivePx = countPx(liveHlCanvas)
-      // Total SF = sum of all non-hidden sessions + current unsaved live work
+      const today = new Date().toLocaleDateString('en-CA')
+      const liveSFVal = toSF(cachedLivePx)
+      // Daily SF = today's sessions only + current unsaved live work (for daily progress bar)
       cachedTodaySF = activePage.sessions
+        .filter(s => !s._hidden && s.date === today)
+        .reduce((sum, s) => sum + (s.sf || 0), 0)
+        + liveSFVal
+      // Total SF = all non-hidden sessions + live (for header Total SF)
+      cachedTotalSF = activePage.sessions
         .filter(s => !s._hidden)
         .reduce((sum, s) => sum + (s.sf || 0), 0)
-        + toSF(cachedLivePx)
+        + liveSFVal
       updateSFDisplay()
     }
 
     // Fast display update — no ImageData reads, safe to call on scale changes
     function updateSFDisplay() {
       if (!activePage) return
-      const liveSF     = Math.round(toSF(cachedLivePx))
-      const totalSF    = Math.round(cachedTodaySF)
-      const totalPct   = totalBuildingSF > 0 ? Math.round((cachedTodaySF / totalBuildingSF) * 100) : 0
-      const barPct     = totalBuildingSF > 0 ? Math.min((cachedTodaySF / totalBuildingSF) * 100, 100) : 0
+      const liveSF   = Math.round(toSF(cachedLivePx))
+      const totalSF  = Math.round(cachedTotalSF)
+      const totalPct = totalBuildingSF > 0 ? Math.round((cachedTotalSF / totalBuildingSF) * 100) : 0
+      const barPct   = totalBuildingSF > 0 ? Math.min((cachedTotalSF / totalBuildingSF) * 100, 100) : 0
       if (hdrSessionRef.current)      hdrSessionRef.current.textContent      = liveSF.toLocaleString()
       if (hdrTotalRef.current)        hdrTotalRef.current.textContent        = totalSF.toLocaleString()
       if (hdrPctRef.current)          hdrPctRef.current.textContent          = totalBuildingSF > 0 ? totalPct + '%' : '–'
@@ -1283,8 +1291,7 @@ export default function Canvas() {
 
     // ── HISTORY ───────────────────────────────────────────────────────────────
     function getCurrentDate() {
-      const t = new Date()
-      return t.getFullYear() + '-' + String(t.getMonth()+1).padStart(2,'0') + '-' + String(t.getDate()).padStart(2,'0')
+      return new Date().toLocaleDateString('en-CA')
     }
     function getDayColor(date) {
       const rec = dayRecords.find(r => r.date === date)
