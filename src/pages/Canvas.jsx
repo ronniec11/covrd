@@ -962,8 +962,9 @@ export default function Canvas() {
         card.className = 'ct-scard' + (soloSession?.id === s.id ? ' solo' : '')
 
         const editBtn = document.createElement('button')
-        editBtn.textContent = '✏️'; editBtn.title = 'Edit'
-        editBtn.style.cssText = 'background:none;border:none;cursor:pointer;padding:2px 4px;font-size:12px;opacity:0.6;'
+        editBtn.innerHTML = '<svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z"/></svg>'
+        editBtn.title = 'Edit'
+        editBtn.style.cssText = 'background:none;border:none;cursor:pointer;padding:2px 4px;opacity:0.6;display:inline-flex;align-items:center;color:#a8a49e;'
         editBtn.onmouseenter = () => { editBtn.style.opacity = '1' }
         editBtn.onmouseleave = () => { editBtn.style.opacity = '0.6' }
         editBtn.addEventListener('click', ev => openEditModal(pg.id, s.id, ev))
