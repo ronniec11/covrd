@@ -738,7 +738,12 @@ export default function Canvas() {
       if (!ans || isNaN(parseFloat(ans))) { cancelCalib(); return }
       activePage.ppf = px / parseFloat(ans)
       activePage.calibrated = true
-      supabase.from('pages').upsert({ id: pageId, pixels_per_foot: activePage.ppf, calibrated: true })
+      supabase.from('pages').update({
+        pixels_per_foot: activePage.ppf,
+        calibrated: true,
+        scale: activePage.scale,
+        ppi: activePage.ppi,
+      }).eq('id', pageId)
         .then(({ error }) => { if (error) console.error('[Canvas] Calib save error:', error) })
       if (calibInfoRef.current) { calibInfoRef.current.style.display = 'inline'; calibInfoRef.current.textContent = 'Calibrated: ' + activePage.ppf.toFixed(1) + ' px/ft' }
       cancelCalib(); updateSF()
@@ -1670,6 +1675,14 @@ export default function Canvas() {
         } else {
           img = new Image()
           await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url })
+        }
+
+        // Restore scale dropdown to saved state before addPage reads it
+        if (pg.scale && scaleSelectRef.current) {
+          scaleSelectRef.current.value = pg.scale
+          if (pg.scale === 'custom' && customWrapRef.current) {
+            customWrapRef.current.style.display = 'flex'
+          }
         }
 
         addPage(img, pg.name, ppi)
