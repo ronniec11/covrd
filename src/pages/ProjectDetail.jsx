@@ -408,6 +408,7 @@ export default function ProjectDetail() {
   const todaySF = todaySessions.filter(s => s.work_date === today).reduce((sum, s) => sum + (parseFloat(s.sf) || 0), 0)
   console.log('[ProjectDetail] todaySF:', todaySF)
   const totalSF = todaySessions.reduce((sum, s) => sum + (parseFloat(s.sf) || 0), 0)
+  const dailyBarColor = todaySF >= (project?.daily_sf_target || 0) && (project?.daily_sf_target || 0) > 0 ? '#4ade80' : '#facc15'
   const pct = project?.daily_sf_target > 0
     ? Math.min(100, Math.round((todaySF / project.daily_sf_target) * 100))
     : 0
@@ -689,7 +690,7 @@ export default function ProjectDetail() {
                 {project?.daily_sf_target > 0 && (
                   <>
                     <div className="h-2 bg-surface-3 rounded-full overflow-hidden">
-                      <div className="h-full bg-accent rounded-full transition-all duration-700" style={{ width: `${pct}%` }} />
+                      <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: dailyBarColor }} />
                     </div>
                     <div className="flex justify-between text-xs mt-1">
                       <span className="text-muted">{pct}% complete</span>
@@ -850,7 +851,7 @@ export default function ProjectDetail() {
                   {project?.daily_sf_target > 0 ? (
                     <>
                       <div className="h-2 bg-surface-3 rounded-full overflow-hidden">
-                        <div className="h-full bg-accent rounded-full transition-all duration-700" style={{ width: `${pct}%` }} />
+                        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: dailyBarColor }} />
                       </div>
                       <div className="flex justify-between text-xs mt-1">
                         <span className="text-muted">{pct}%</span>
