@@ -738,13 +738,14 @@ export default function Canvas() {
       if (!ans || isNaN(parseFloat(ans))) { cancelCalib(); return }
       activePage.ppf = px / parseFloat(ans)
       activePage.calibrated = true
+      console.log('[Canvas] Saving calibration:', { pageId, ppf: activePage.ppf, calibrated: true, scale: activePage.scale })
       supabase.from('pages').update({
         pixels_per_foot: activePage.ppf,
         calibrated: true,
         scale: activePage.scale,
         ppi: activePage.ppi,
       }).eq('id', pageId)
-        .then(({ error }) => { if (error) console.error('[Canvas] Calib save error:', error) })
+        .then(({ error }) => { console.log('[Canvas] Calibration save result:', error || 'success') })
       if (calibInfoRef.current) { calibInfoRef.current.style.display = 'inline'; calibInfoRef.current.textContent = 'Calibrated: ' + activePage.ppf.toFixed(1) + ' px/ft' }
       cancelCalib(); updateSF()
     }
@@ -1633,6 +1634,7 @@ export default function Canvas() {
 
       const savedPPF = pg.pixels_per_foot || null
       const savedCalibrated = pg.calibrated || false
+      console.log('[Canvas] Loaded page calibration:', { savedPPF: pg.pixels_per_foot, savedCalibrated: pg.calibrated, scale: pg.scale })
 
       let url = pg.floor_plan_url
       if (url && !url.startsWith('http')) {
