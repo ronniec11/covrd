@@ -743,7 +743,7 @@ export default function Canvas() {
         pixels_per_foot: activePage.ppf,
         calibrated: true,
         scale: activePage.scale,
-        ppi: activePage.ppi,
+        // ppi: activePage.ppi,  // add back after: ALTER TABLE pages ADD COLUMN ppi numeric;
       }).eq('id', pageId)
         .then(({ error }) => { console.log('[Canvas] Calibration save result:', error || 'success') })
       if (calibInfoRef.current) { calibInfoRef.current.style.display = 'inline'; calibInfoRef.current.textContent = 'Calibrated: ' + activePage.ppf.toFixed(1) + ' px/ft' }
