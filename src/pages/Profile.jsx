@@ -30,7 +30,7 @@ export default function Profile() {
       setSaved(true)
       setTimeout(() => {
         setSaved(false)
-        navigate(returnTo || '/projects')
+        navigate(returnTo || '/projects', { replace: true })
       }, 1000)
     } catch (err) {
       setError(err.message)
@@ -47,7 +47,7 @@ export default function Profile() {
       <div className="max-w-lg mx-auto px-4 py-8">
         {returnTo && (
           <button
-            onClick={() => navigate(returnTo)}
+            onClick={() => navigate(returnTo, { replace: true })}
             className="flex items-center gap-1.5 text-sm text-muted hover:text-white mb-5 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
