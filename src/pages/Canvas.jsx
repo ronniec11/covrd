@@ -1210,8 +1210,8 @@ export default function Canvas() {
       s.countMarkers = [...liveCountMarkers]; s.count = liveCountMarkers.length
       s._hidden = false
       // Recalculate SF from updated highlight canvas
-      const newHLCtx = newHL.width > 0 && newHL.height > 0 ? newHL.getContext('2d') : null
-      const d = newHLCtx ? newHLCtx.getImageData(0, 0, newHL.width, newHL.height).data : []
+      const hlCtx2 = newHL.width > 0 && newHL.height > 0 ? newHL.getContext('2d') : null
+      const d = hlCtx2 ? hlCtx2.getImageData(0, 0, newHL.width, newHL.height).data : []
       let px = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) px++
       s.sf = activePage?.ppf ? px / (activePage.ppf * activePage.ppf) : s.sf
       liveHlCtx.clearRect(0, 0, liveHlCanvas.width, liveHlCanvas.height)
