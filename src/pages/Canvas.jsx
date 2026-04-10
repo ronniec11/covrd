@@ -755,10 +755,13 @@ export default function Canvas() {
     function countPx(cvs) {
       if (!activePage) return 0
       const img = activePage.image
+      if (!img || img.width === 0 || img.height === 0) return 0
       const tmp = document.createElement('canvas')
       tmp.width = img.width; tmp.height = img.height
-      if (cvs) { const tmpCtx = tmp.getContext('2d'); if (tmpCtx && tmp.width > 0) tmpCtx.drawImage(cvs, 0, 0) }
-      const d = tmp.getContext('2d').getImageData(0, 0, tmp.width, tmp.height).data
+      const tmpCtx = tmp.getContext('2d')
+      if (!tmpCtx) return 0
+      if (cvs && cvs.width > 0 && cvs.height > 0) tmpCtx.drawImage(cvs, 0, 0)
+      const d = tmpCtx.getImageData(0, 0, tmp.width, tmp.height).data
       let c = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) c++
       return c
     }
@@ -1207,7 +1210,8 @@ export default function Canvas() {
       s.countMarkers = [...liveCountMarkers]; s.count = liveCountMarkers.length
       s._hidden = false
       // Recalculate SF from updated highlight canvas
-      const d = newHL.getContext('2d').getImageData(0, 0, newHL.width, newHL.height).data
+      const newHLCtx = newHL.width > 0 && newHL.height > 0 ? newHL.getContext('2d') : null
+      const d = newHLCtx ? newHLCtx.getImageData(0, 0, newHL.width, newHL.height).data : []
       let px = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) px++
       s.sf = activePage?.ppf ? px / (activePage.ppf * activePage.ppf) : s.sf
       liveHlCtx.clearRect(0, 0, liveHlCanvas.width, liveHlCanvas.height)
