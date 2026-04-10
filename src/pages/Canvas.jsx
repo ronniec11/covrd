@@ -1108,7 +1108,7 @@ export default function Canvas() {
       if (editModalRef.current) editModalRef.current.classList.add('open')
     }
     function closeEditModal() { if (editModalRef.current) editModalRef.current.classList.remove('open') }
-    function saveEdit() {
+    async function saveEdit() {
       if (!editTarget) return
       const {s} = editTarget
       const newName = editNameRef.current?.value.trim()
@@ -1119,6 +1119,14 @@ export default function Canvas() {
       if (sel) s.color = sel.dataset.c
       editTarget = null; closeEditModal(); invalidateSessions()
       renderSessions(); updateSF(); redrawAll()
+      if (s.supabaseId) {
+        console.log('[Canvas] Updating session in Supabase:', s.supabaseId, s.name)
+        await supabase.from('sessions').update({
+          name:  s.name,
+          color: s.color,
+          sf:    s.sf,
+        }).eq('id', s.supabaseId)
+      }
     }
 
     // ── PAINT MORE ────────────────────────────────────────────────────────────
