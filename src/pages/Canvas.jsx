@@ -1925,7 +1925,7 @@ export default function Canvas() {
 
           <div className="ct-progress-wrap">
             <div className="ct-progress-header">
-              <span className="ct-progress-lbl">Daily Target</span>
+              <span className="ct-progress-lbl">Progress</span>
               <span className="ct-progress-nums"><span ref={totalSFsbRef}>0</span> / <span ref={targetDisplayRef}>0</span> SF</span>
             </div>
             <div className="ct-progress-bar-bg">
