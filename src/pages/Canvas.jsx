@@ -1701,6 +1701,9 @@ export default function Canvas() {
       if (!dbSessions?.length) { console.log('[Canvas] No sessions found'); return }
 
       console.log('[Canvas] Loading', dbSessions.length, 'sessions')
+      // On-screen diagnostics for the PC->iPad markup-not-showing bug — an
+      // alert() so it's readable directly on-device without Web Inspector.
+      const debugLines = []
       for (const dbSess of dbSessions) {
         if (deletedSessionIds.has(dbSess.id)) continue
         let hlCanvas = null, penCanvas = null
@@ -1740,16 +1743,20 @@ export default function Canvas() {
         }
 
         console.log('[Canvas] Loaded session', dbSess.id, 'hlCanvas:', hlCanvas?.width, 'x', hlCanvas?.height)
+        const srcType = dbSess.highlight_data ? (dbSess.highlight_data.startsWith('data:') ? 'data-url' : 'storage-url') : 'none'
         if (!hlCanvas || hlCanvas.width === 0) {
           console.warn('[Canvas] Skipping session with invalid hlCanvas:', dbSess.id)
+          debugLines.push(`"${dbSess.name || dbSess.id}" (${srcType}): FAILED TO LOAD — skipped entirely`)
           continue
         }
 
         const img = activePage.image
+        debugLines.push(`"${dbSess.name || dbSess.id}" (${srcType}): loaded ${hlCanvas.width}x${hlCanvas.height}, target ${img.width}x${img.height}${hlCanvas.width !== img.width || hlCanvas.height !== img.height ? ' [RESIZING]' : ' [exact match]'}`)
         if (hlCanvas.width !== img.width || hlCanvas.height !== img.height) {
           const tmp = document.createElement('canvas')
           tmp.width = img.width; tmp.height = img.height
           const tmpCtx = tmp.getContext('2d')
+          if (!tmpCtx || tmp.width === 0) debugLines.push(`  -> resize FAILED: no 2d context or zero target size`)
           if (tmpCtx && tmp.width > 0) tmpCtx.drawImage(hlCanvas, 0, 0, img.width, img.height)
           hlCanvas = tmp
         }
@@ -1794,6 +1801,10 @@ export default function Canvas() {
         })
       }
 
+      if (debugLines.length) {
+        console.log('[Canvas] Session load diagnostics:\n' + debugLines.join('\n'))
+        if (isIPad) alert('Session load diagnostics:\n\n' + debugLines.join('\n'))
+      }
       console.log('[Canvas] Sessions loaded:', activePage.sessions.length)
       if (activePage.sessions.length > 0) {
         const s = activePage.sessions[0]
