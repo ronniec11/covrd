@@ -1870,11 +1870,13 @@ export default function Canvas() {
       uzShow('', 'Loading floor plan…', 'Rendering image…')
 
       try {
-        if (pg.tile_meta) {
-          // Tiled page: OpenSeadragon owns rendering entirely, driven by the
-          // pre-generated tile pyramid — skip the flat-image load/render
-          // path completely (that's the whole point: never load the full
-          // floor plan image on this device at all).
+        if (pg.tile_meta && isIPad) {
+          // Tiled page, on the device that actually needs it: iPad Safari's
+          // memory ceiling is the entire reason tiling exists. Desktop never
+          // had that constraint and was already fast on the flat-image path
+          // (plus OSD's own render loop adds real per-frame overhead this
+          // phase doesn't need there) — so desktop keeps using it unchanged,
+          // same as any page without tile_meta at all.
           console.log('[Canvas] floor plan load path: TILED (OpenSeadragon)', pg.tile_meta)
           uzShow('', 'Loading floor plan…', 'Loading deep-zoom tiles…')
 
