@@ -135,7 +135,6 @@ export default function Canvas() {
     let activePage     = null
     let osdViewer      = null
     let osdOverlayScale = 1
-    let lastDecodeInfo = ''
     let tool           = 'highlight'
     let brushSize      = 20
     let activeColor    = '#facc15'
@@ -1665,24 +1664,19 @@ export default function Canvas() {
       // ~1000 non-transparent pixels after resize). createImageBitmap's
       // resize option decodes straight to the target size, never
       // materializing the full-resolution intermediate.
-      lastDecodeInfo = `targetW=${targetW} targetH=${targetH} hasCreateImageBitmap=${typeof createImageBitmap === 'function'}`
       if (targetW && targetH && typeof createImageBitmap === 'function') {
         try {
           const res = await fetch(dataUrl)
           const blob = await res.blob()
-          lastDecodeInfo += ` blobSize=${blob.size} blobType=${blob.type}`
           const bitmap = await createImageBitmap(blob, {
             resizeWidth: targetW, resizeHeight: targetH, resizeQuality: 'high',
           })
-          lastDecodeInfo += ` bitmap=${bitmap.width}x${bitmap.height}`
           const c = document.createElement('canvas'); c.width = targetW; c.height = targetH
           const cCtx = c.getContext('2d')
           if (cCtx) cCtx.drawImage(bitmap, 0, 0)
           bitmap.close()
-          lastDecodeInfo += ' method=createImageBitmap-resize OK'
           return c
         } catch (e) {
-          lastDecodeInfo += ` method=createImageBitmap-resize FAILED: ${e.message || e}`
           console.warn('[Canvas] createImageBitmap resize decode failed, falling back:', e)
         }
       }
@@ -1695,10 +1689,8 @@ export default function Canvas() {
         const c = document.createElement('canvas'); c.width = img.width; c.height = img.height
         const cCtx = c.getContext('2d')
         if (cCtx && c.width > 0) cCtx.drawImage(img, 0, 0)
-        lastDecodeInfo += ` method=img-native-${c.width}x${c.height} OK`
         return c
       } catch (e) {
-        lastDecodeInfo += ` method=img-native FAILED: ${e.message || e}`
         console.warn('[Canvas] Failed to load canvas from data URL', e)
         return null
       }
@@ -1735,9 +1727,6 @@ export default function Canvas() {
       if (!dbSessions?.length) { console.log('[Canvas] No sessions found'); return }
 
       console.log('[Canvas] Loading', dbSessions.length, 'sessions')
-      // On-screen diagnostics for the PC->iPad markup-not-showing bug — an
-      // alert() so it's readable directly on-device without Web Inspector.
-      const debugLines = []
       for (const dbSess of dbSessions) {
         if (deletedSessionIds.has(dbSess.id)) continue
         let hlCanvas = null, penCanvas = null
@@ -1789,31 +1778,16 @@ export default function Canvas() {
         }
 
         console.log('[Canvas] Loaded session', dbSess.id, 'hlCanvas:', hlCanvas?.width, 'x', hlCanvas?.height)
-        const srcType = dbSess.highlight_data ? (dbSess.highlight_data.startsWith('data:') ? 'data-url' : 'storage-url') : 'none'
         if (!hlCanvas || hlCanvas.width === 0) {
           console.warn('[Canvas] Skipping session with invalid hlCanvas:', dbSess.id)
-          debugLines.push(`"${dbSess.name || dbSess.id}" (${srcType}): FAILED TO LOAD — skipped entirely\n  decode: ${lastDecodeInfo}`)
           continue
         }
 
-        // Sample non-transparent pixels right after decode, before any
-        // resize — pins down whether content survived decode itself.
-        let decodedNonBlank = 'n/a'
-        try {
-          const sampleCtx = hlCanvas.getContext('2d')
-          const sampleData = sampleCtx.getImageData(0, 0, hlCanvas.width, hlCanvas.height).data
-          let count = 0
-          for (let i = 3; i < sampleData.length; i += 4) if (sampleData[i] > 10) count++
-          decodedNonBlank = `${count} / ${sampleData.length / 4}`
-        } catch (e) { decodedNonBlank = 'ERROR: ' + (e.message || e) }
-
         const img = activePage.image
-        debugLines.push(`"${dbSess.name || dbSess.id}" (${srcType}): loaded ${hlCanvas.width}x${hlCanvas.height}, target ${img.width}x${img.height}${hlCanvas.width !== img.width || hlCanvas.height !== img.height ? ' [RESIZING]' : ' [exact match]'}\n  decode: ${lastDecodeInfo}\n  post-decode non-blank px: ${decodedNonBlank}`)
         if (hlCanvas.width !== img.width || hlCanvas.height !== img.height) {
           const tmp = document.createElement('canvas')
           tmp.width = img.width; tmp.height = img.height
           const tmpCtx = tmp.getContext('2d')
-          if (!tmpCtx || tmp.width === 0) debugLines.push(`  -> resize FAILED: no 2d context or zero target size`)
           if (tmpCtx && tmp.width > 0) tmpCtx.drawImage(hlCanvas, 0, 0, img.width, img.height)
           hlCanvas = tmp
         }
@@ -1858,31 +1832,9 @@ export default function Canvas() {
         })
       }
 
-      if (debugLines.length) {
-        console.log('[Canvas] Session load diagnostics:\n' + debugLines.join('\n'))
-        if (isIPad) alert('Session load diagnostics:\n\n' + debugLines.join('\n'))
-      }
       console.log('[Canvas] Sessions loaded:', activePage.sessions.length)
-      if (activePage.sessions.length > 0) {
-        const s = activePage.sessions[0]
-        console.log('[Canvas] First session color:', s.color, 'hlCanvas:', s.hlCanvas?.width, 'x', s.hlCanvas?.height)
-        if (s.hlCanvas) {
-          const testCtx = s.hlCanvas.getContext('2d')
-          const testData = testCtx?.getImageData(0, 0, Math.min(10, s.hlCanvas.width), Math.min(10, s.hlCanvas.height))
-          console.log('[Canvas] First 10x10 pixels have data:', testData?.data.some(v => v > 0))
-        }
-      }
       invalidateSessions()
       redrawAll(); renderSessions(); updateSF(); updateProgressBar(); saveDayToHistory()
-      if (isIPad && sessionsHL.width > 0) {
-        const checkCtx = sessionsHL.getContext('2d')
-        const checkData = checkCtx.getImageData(0, 0, sessionsHL.width, sessionsHL.height).data
-        let visiblePixels = 0
-        for (let i = 3; i < checkData.length; i += 4) if (checkData[i] > 10) visiblePixels++
-        alert(`sessionsHL composite: ${sessionsHL.width}x${sessionsHL.height}, visible px: ${visiblePixels} / ${checkData.length / 4}\n` +
-          `activePage.zoom=${activePage.zoom.toFixed(4)} pan=(${activePage.pan.x.toFixed(1)}, ${activePage.pan.y.toFixed(1)})\n` +
-          `cW=${cW} cH=${cH} tileMeta=${!!activePage.tileMeta}`)
-      }
     }
 
     // ── REALTIME SUBSCRIPTION ─────────────────────────────────────────────────
