@@ -959,8 +959,37 @@ export default function Canvas() {
       if (saved) showToast('Session saved!')
     }
 
+    // Uploads a session canvas to Storage instead of inlining it as base64 in
+    // the DB row — large base64 highlight_data/pen_data has been silently
+    // failing to decode as an <img> on iPad Safari. Falls back to a data URL
+    // if the upload fails, so markup is never lost even when offline/erroring.
+    async function uploadCanvasToStorage(canvas, storageKey, type) {
+      if (!canvas || canvas.width === 0) return null
+      try {
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
+        if (!blob) return null
+        const path = `${dbProjectId}/sessions/${pageId}/${storageKey}_${type}.png`
+        const { error } = await supabase.storage
+          .from('floor-plans')
+          .upload(path, blob, { upsert: true, contentType: 'image/png' })
+        if (error) { console.warn('[Canvas] Session canvas upload failed:', error); return null }
+        const { data } = supabase.storage.from('floor-plans').getPublicUrl(path)
+        return data.publicUrl
+      } catch (e) {
+        console.warn('[Canvas] Session canvas upload failed:', e)
+        return null
+      }
+    }
+
     async function saveSessionToSupabase(session) {
       try {
+        const storageKey = Date.now()
+        const [highlight_data, pen_data] = await Promise.all([
+          uploadCanvasToStorage(session.hlCanvas, storageKey, 'hl').then(url => url || session.hlCanvas.toDataURL('image/png')),
+          session.penCanvas
+            ? uploadCanvasToStorage(session.penCanvas, storageKey, 'pen').then(url => url || session.penCanvas.toDataURL('image/png'))
+            : null,
+        ])
         const insertPayload = {
           page_id:        pageId,
           project_id:     dbProjectId,
@@ -969,8 +998,8 @@ export default function Canvas() {
           color:          session.color,
           sf:             session.sf,
           work_date:      session.date,
-          highlight_data: session.hlCanvas.toDataURL('image/png'),
-          pen_data:       session.penCanvas ? session.penCanvas.toDataURL('image/png') : null,
+          highlight_data,
+          pen_data,
           count_data:     session.countMarkers?.length > 0 ? session.countMarkers : null,
           updated_at:     new Date().toISOString(),
         }
@@ -1270,21 +1299,29 @@ export default function Canvas() {
       liveCountMarkers = []; undoStack = []; editingSession = false; editTarget = null
       invalidateSessions(); if (editBannerRef.current) editBannerRef.current.classList.remove('show')
       restoreFooter(); redrawAll(); renderSessions(); updateSF()
-      // Persist updated session to Supabase
+      // Persist updated session to Supabase (fire-and-forget, uploads canvases
+      // to Storage instead of inlining as base64 — see uploadCanvasToStorage)
       if (s.supabaseId) {
-        supabase.from('sessions').upsert({
-          id:             s.supabaseId,
-          name:           s.name,
-          color:          s.color,
-          sf:             s.sf,
-          highlight_data: newHL.toDataURL('image/png'),
-          pen_data:       newPen ? newPen.toDataURL('image/png') : null,
-          count_data:     s.countMarkers.length > 0 ? s.countMarkers : null,
-          updated_at:     new Date().toISOString(),
-        }).then(({ error }) => {
+        (async () => {
+          const [highlight_data, pen_data] = await Promise.all([
+            uploadCanvasToStorage(newHL, s.supabaseId, 'hl').then(url => url || newHL.toDataURL('image/png')),
+            newPen
+              ? uploadCanvasToStorage(newPen, s.supabaseId, 'pen').then(url => url || newPen.toDataURL('image/png'))
+              : null,
+          ])
+          const { error } = await supabase.from('sessions').upsert({
+            id:             s.supabaseId,
+            name:           s.name,
+            color:          s.color,
+            sf:             s.sf,
+            highlight_data,
+            pen_data,
+            count_data:     s.countMarkers.length > 0 ? s.countMarkers : null,
+            updated_at:     new Date().toISOString(),
+          })
           if (error) console.error('[Canvas] Failed to update session:', error)
           else { console.log('[Canvas] Session updated in Supabase'); showToast('Session updated!') }
-        })
+        })()
       }
     }
 
@@ -1487,10 +1524,14 @@ export default function Canvas() {
     }
 
     // ── SUPABASE: LOAD SESSIONS ───────────────────────────────────────────────
+    // Handles both legacy base64 data URLs and Storage public URLs (newer
+    // sessions) — crossOrigin is a no-op for data: URLs and required for
+    // reading storage URLs back into a canvas without tainting it.
     async function loadCanvasFromDataUrl(dataUrl) {
       if (!dataUrl) return null
       try {
         const img = new Image()
+        img.crossOrigin = 'anonymous'
         const loaded = new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = dataUrl })
         const timedOut = new Promise((_, reject) => setTimeout(() => reject(new Error('Image load timed out')), 10000))
         await Promise.race([loaded, timedOut])
