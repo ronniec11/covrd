@@ -10,7 +10,7 @@ const CHUNK = 2048
 // Base render quality for the sharpest (max) pyramid level — matches the
 // desktop RENDER_SCALE used elsewhere in the app (Canvas.jsx) so tiles look
 // as sharp as today's desktop floor plan rendering.
-const BASE_SCALE = 4.0
+export const TILE_BASE_SCALE = 4.0
 
 function levelDims(fullW, fullH, maxLevel, level) {
   const factor = 2 ** (maxLevel - level)
@@ -119,18 +119,18 @@ export async function generatePdfTiles(pdfUrl, { projectId, pageId, format = 'pn
 
   const pdfDoc = await pdfjsLib.getDocument({ url: pdfUrl, withCredentials: false }).promise
   const page = await pdfDoc.getPage(1)
-  const baseViewport = page.getViewport({ scale: BASE_SCALE })
+  const baseViewport = page.getViewport({ scale: TILE_BASE_SCALE })
   const fullW = Math.round(baseViewport.width)
   const fullH = Math.round(baseViewport.height)
   const { maxLevel, minLevel } = pyramidLevels(fullW, fullH)
   const pathPrefix = `${projectId}/tiles/${pageId}`
-  console.log('[tileGenerator] PDF page size at BASE_SCALE:', fullW, 'x', fullH, 'levels:', minLevel, '-', maxLevel)
+  console.log('[tileGenerator] PDF page size at TILE_BASE_SCALE:', fullW, 'x', fullH, 'levels:', minLevel, '-', maxLevel)
 
   const jobs = []
   let chunkCount = 0
   for (let level = minLevel; level <= maxLevel; level++) {
     const { w: lw, h: lh } = levelDims(fullW, fullH, maxLevel, level)
-    const levelScale = BASE_SCALE / 2 ** (maxLevel - level)
+    const levelScale = TILE_BASE_SCALE / 2 ** (maxLevel - level)
     const levelViewport = page.getViewport({ scale: levelScale })
     const chunkCols = Math.ceil(lw / CHUNK)
     const chunkRows = Math.ceil(lh / CHUNK)

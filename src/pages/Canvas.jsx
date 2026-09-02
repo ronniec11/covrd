@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
+import OpenSeadragon from 'openseadragon'
+import { buildTileSource, TILE_BASE_SCALE } from '../lib/tileGenerator'
 import './Canvas.css'
 
 // NOTE: Run this migration in Supabase SQL editor before using count tool:
@@ -35,6 +37,7 @@ export default function Canvas() {
   const penRef           = useRef(null)
   const countRef         = useRef(null)   // count markers layer
   const drawRef          = useRef(null)
+  const osdContainerRef  = useRef(null)   // OpenSeadragon deep-zoom viewer (tiled pages only)
   const cursorRingRef    = useRef(null)
   const calibStatusRef   = useRef(null)
   const zoomBarRef       = useRef(null)
@@ -104,6 +107,11 @@ export default function Canvas() {
     // fine on desktop but can blow through Safari's tighter per-tab memory
     // budget on iPad after enough strokes, crashing the tab mid-drawing.
     const MAX_UNDO = (isSafari || isIPad) ? 8 : 40
+    // Phase 2 spike: tiled pages render through OpenSeadragon with its own
+    // native pan/pinch/zoom, drawing disabled, purely to validate on a real
+    // iPad that tiled rendering is actually smooth/sharp before Phase 3
+    // rewires the existing drawing input to drive OSD's viewport instead.
+    const OSD_VIEW_ONLY = true
 
     const wrap   = wrapRef.current
     const planEl = planRef.current
@@ -111,7 +119,8 @@ export default function Canvas() {
     const penEl  = penRef.current
     const countEl = countRef.current
     const drawEl = drawRef.current
-    if (!wrap || !planEl || !hlEl || !penEl || !countEl || !drawEl) return
+    const osdContainerEl = osdContainerRef.current
+    if (!wrap || !planEl || !hlEl || !penEl || !countEl || !drawEl || !osdContainerEl) return
 
     const planCtx  = planEl.getContext('2d')
     const hlCtx    = hlEl.getContext('2d')
@@ -129,6 +138,7 @@ export default function Canvas() {
     // ── MUTABLE STATE ─────────────────────────────────────────────────────────
     let pages          = []
     let activePage     = null
+    let osdViewer      = null
     let tool           = 'highlight'
     let brushSize      = 20
     let activeColor    = '#facc15'
@@ -250,13 +260,13 @@ export default function Canvas() {
     }
 
     // ── PAGE MANAGEMENT ───────────────────────────────────────────────────────
-    function addPage(img, name, ppiIn) {
+    function addPage(img, name, ppiIn, tileMeta = null) {
       const sv = scaleSelectRef.current?.value || '1:8'
       const s  = SCALES[sv] || SCALES['1:8']
       const pg = {
         id: Date.now(), name, image: img,
         ppf: ppiIn ? (s.n / s.d) * ppiIn : ppf(s.n, s.d),
-        scale: sv, ppi: ppiIn || null,
+        scale: sv, ppi: ppiIn || null, tileMeta,
         sessions: [], zoom: 1, pan: {x:0, y:0},
       }
       pages = [pg]; activePage = pg
@@ -269,6 +279,50 @@ export default function Canvas() {
       const sv = pg.scale || '1:8'; if (sv === 'custom') return
       const s = SCALES[sv]; if (!s) return
       pg.ppf = ppi ? (s.n / s.d) * ppi : ppf(s.n, s.d)
+    }
+
+    // ── OPENSEADRAGON (tiled pages) ──────────────────────────────────────────
+    // Phase 2 spike: OSD renders the base image and drives its own native
+    // pan/pinch/zoom; drawing input is disabled (OSD_VIEW_ONLY) while this is
+    // validated on a real iPad. activePage.zoom/pan get derived from OSD's
+    // viewport on every change so s2i(), calibration, and SF math — which
+    // only ever read those two values — need no changes at all.
+    function teardownOsdViewer() {
+      if (osdViewer) { osdViewer.destroy(); osdViewer = null }
+      wrap.classList.remove('ct-tiled-view')
+      osdContainerEl.style.display = 'none'
+      planEl.style.display = 'block'
+    }
+
+    function setupOsdViewer(tileMeta) {
+      teardownOsdViewer()
+      planEl.style.display = 'none'
+      osdContainerEl.style.display = 'block'
+      if (OSD_VIEW_ONLY) wrap.classList.add('ct-tiled-view')
+
+      osdViewer = OpenSeadragon({
+        element: osdContainerEl,
+        tileSources: buildTileSource(tileMeta),
+        showNavigationControl: false,
+        animationTime: 0,
+        visibilityRatio: 1,
+        // minZoomLevel/maxZoomLevel intentionally left at OSD's own defaults
+        // (minZoomImageRatio 0.9 / maxZoomPixelRatio 1.1) rather than reusing
+        // this app's MIN_ZOOM/MAX_ZOOM constants — those are calibrated in a
+        // different unit (screen px per image px) than OSD's viewport-zoom
+        // level, so plugging them in directly would clamp to the wrong range.
+        gestureSettingsMouse: { dragToPan: OSD_VIEW_ONLY, pinchToZoom: OSD_VIEW_ONLY, scrollToZoom: OSD_VIEW_ONLY, clickToZoom: false },
+        gestureSettingsTouch: { dragToPan: OSD_VIEW_ONLY, pinchToZoom: OSD_VIEW_ONLY, scrollToZoom: OSD_VIEW_ONLY, clickToZoom: false },
+      })
+
+      osdViewer.addHandler('update-viewport', () => {
+        if (!activePage) return
+        const tiledImage = osdViewer.world.getItemAt(0)
+        if (!tiledImage) return
+        activePage.zoom = tiledImage.viewportToImageZoom(osdViewer.viewport.getZoom(true))
+        activePage.pan = tiledImage.imageToViewerElementCoordinates(new OpenSeadragon.Point(0, 0))
+        scheduleRedraw()
+      })
     }
 
     // ── CANVAS SETUP ──────────────────────────────────────────────────────────
@@ -325,12 +379,17 @@ export default function Canvas() {
     function redrawAll() {
       if (!activePage) return
       rebuildSessionsCache()
-      const img = activePage.image, z = activePage.zoom, p = activePage.pan
 
-      planCtx.clearRect(0, 0, cW, cH)
-      planCtx.save(); planCtx.translate(p.x, p.y); planCtx.scale(z, z)
-      planCtx.imageSmoothingEnabled = true; planCtx.imageSmoothingQuality = 'high'
-      planCtx.drawImage(img, 0, 0); planCtx.restore()
+      // Tiled pages: OpenSeadragon owns drawing the base image itself, so
+      // there's nothing to draw into planCtx and activePage.image is just a
+      // {width,height} placeholder for the overlay coordinate math below.
+      if (!activePage.tileMeta) {
+        const img = activePage.image, z = activePage.zoom, p = activePage.pan
+        planCtx.clearRect(0, 0, cW, cH)
+        planCtx.save(); planCtx.translate(p.x, p.y); planCtx.scale(z, z)
+        planCtx.imageSmoothingEnabled = true; planCtx.imageSmoothingQuality = 'high'
+        planCtx.drawImage(img, 0, 0); planCtx.restore()
+      }
 
       redrawHL(); redrawPen(); drawCountLayer()
     }
@@ -1169,6 +1228,12 @@ export default function Canvas() {
 
       pages.forEach(pg => {
         if (!pg.image) return
+        if (pg.tileMeta) {
+          // Tiled pages have no rasterized base image on this device to
+          // composite into a PNG export (that's the point — Phase 3 territory).
+          console.warn('[Canvas] Skipping PNG export for tiled page (not yet supported):', pg.name)
+          return
+        }
         const exp = document.createElement('canvas')
         exp.width = pg.image.width; exp.height = pg.image.height
         const ec = exp.getContext('2d'); ec.drawImage(pg.image, 0, 0)
@@ -1805,6 +1870,23 @@ export default function Canvas() {
       uzShow('', 'Loading floor plan…', 'Rendering image…')
 
       try {
+        if (pg.tile_meta) {
+          // Tiled page: OpenSeadragon owns rendering entirely, driven by the
+          // pre-generated tile pyramid — skip the flat-image load/render
+          // path completely (that's the whole point: never load the full
+          // floor plan image on this device at all).
+          console.log('[Canvas] floor plan load path: TILED (OpenSeadragon)', pg.tile_meta)
+          uzShow('', 'Loading floor plan…', 'Loading deep-zoom tiles…')
+
+          if (pg.scale && scaleSelectRef.current) {
+            scaleSelectRef.current.value = pg.scale
+            if (pg.scale === 'custom' && customWrapRef.current) customWrapRef.current.style.display = 'flex'
+          }
+
+          const placeholderImg = { width: pg.tile_meta.width, height: pg.tile_meta.height }
+          addPage(placeholderImg, pg.name, 72 * TILE_BASE_SCALE, pg.tile_meta)
+          setupOsdViewer(pg.tile_meta)
+        } else {
         const isPdf = /\.pdf($|\?)/i.test(url) || url.toLowerCase().includes('.pdf')
         console.log('[Canvas] floor plan load path:', pg.cached_image_url ? 'CACHED PNG' : isPdf ? 'PDF RENDER' : 'IMAGE')
         let img, ppi = null
@@ -1886,6 +1968,7 @@ export default function Canvas() {
           } catch (e) {
             console.warn('[Canvas] Cache save failed:', e)
           }
+        }
         }
 
         if (savedPPF && savedCalibrated) {
@@ -2013,6 +2096,7 @@ export default function Canvas() {
     return () => {
       cancelAnimationFrame(rafId)
       clearInterval(draftInterval)
+      if (osdViewer) osdViewer.destroy()
       if (realtimeSub) supabase.removeChannel(realtimeSub)
       drawEl.removeEventListener('mousedown', onDown)
       drawEl.removeEventListener('mousemove', onMove)
@@ -2119,6 +2203,7 @@ export default function Canvas() {
             Unsaved
           </div>
 
+          <div ref={osdContainerRef} className="ct-canvas ct-osd-viewer" />
           <canvas ref={planRef}  className="ct-canvas" />
           <canvas ref={hlRef}    className="ct-canvas" />
           <canvas ref={penRef}   className="ct-canvas" />
