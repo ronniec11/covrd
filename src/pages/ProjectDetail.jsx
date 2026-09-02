@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
+import { generatePdfTiles, generateRasterTiles, deleteTiles } from '../lib/tileGenerator'
 
 const UPLOAD_TIMEOUT_MS = 30_000
 
@@ -295,8 +296,38 @@ export default function ProjectDetail() {
   const [editInfoName, setEditInfoName] = useState('')
   const [editInfoDesc, setEditInfoDesc] = useState('')
   const [savingProjectInfo, setSavingProjectInfo] = useState(false)
+  const [tilingPageId, setTilingPageId] = useState(null)
+  const [tilingProgress, setTilingProgress] = useState(0)
 
   const canManage = profile?.role === 'admin' || profile?.role === 'pm'
+
+  async function generateTiles(page) {
+    if (tilingPageId) return
+    if (!page.floor_plan_url) { alert('This page has no floor plan file to tile.'); return }
+    setTilingPageId(page.id); setTilingProgress(0)
+    try {
+      let url = page.floor_plan_url
+      if (!url.startsWith('http')) {
+        const { data } = supabase.storage.from('floor-plans').getPublicUrl(url)
+        url = data.publicUrl
+      }
+      const isPdf = /\.pdf($|\?)/i.test(url) || url.toLowerCase().includes('.pdf')
+      const onProgress = (done, total) => setTilingProgress(total ? Math.round((done / total) * 100) : 0)
+      const opts = { projectId, pageId: page.id, onProgress }
+      const tile_meta = isPdf
+        ? await generatePdfTiles(url, opts)
+        : await generateRasterTiles(url, opts)
+
+      const { error } = await supabase.from('pages').update({ tile_meta }).eq('id', page.id)
+      if (error) throw error
+      setPages(ps => ps.map(p => p.id === page.id ? { ...p, tile_meta } : p))
+    } catch (err) {
+      console.error('[ProjectDetail] Tile generation failed:', err)
+      alert('Tile generation failed: ' + (err.message || 'check console'))
+    } finally {
+      setTilingPageId(null); setTilingProgress(0)
+    }
+  }
 
   async function saveProjectInfo() {
     const name = editInfoName.trim()
@@ -342,6 +373,9 @@ export default function ProjectDetail() {
     }
     if (filesToRemove.length > 0) {
       await supabase.storage.from('floor-plans').remove(filesToRemove)
+    }
+    if (page.tile_meta) {
+      await deleteTiles(projectId, page.id)
     }
 
     // 4. Update local state
@@ -580,6 +614,20 @@ export default function ProjectDetail() {
                             title="Delete floor plan"
                           >
                             <svg className="w-3 h-3 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); generateTiles(page) }}
+                            disabled={!!tilingPageId}
+                            className={`absolute bottom-1 right-1 px-1 py-0.5 rounded bg-black/60 transition-opacity flex items-center gap-0.5 ${
+                              tilingPageId === page.id ? 'opacity-100' : 'opacity-0 group-hover/tab:opacity-100'
+                            } ${page.tile_meta ? 'hover:bg-black/60' : 'hover:bg-accent/60'}`}
+                            title={page.tile_meta ? 'Regenerate deep-zoom tiles' : 'Generate deep-zoom tiles (smooth iPad zoom)'}
+                          >
+                            {tilingPageId === page.id ? (
+                              <span className="text-[9px] text-white font-medium">{tilingProgress}%</span>
+                            ) : (
+                              <svg className={`w-3 h-3 ${page.tile_meta ? 'text-accent' : 'text-white'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>
+                            )}
                           </button>
                         </>
                       )}
