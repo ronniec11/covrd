@@ -701,7 +701,10 @@ export default function Canvas() {
 
     function panByScreenDelta(dx, dy) {
       if (osdViewer) {
-        const delta = osdViewer.viewport.deltaPointsFromPixels(new OpenSeadragon.Point(dx, dy), true)
+        // viewport.panBy moves the CAMERA by delta, which is the opposite of
+        // "drag right to move the content right" — negate so dragging/pinch-
+        // translating tracks the finger instead of running away from it.
+        const delta = osdViewer.viewport.deltaPointsFromPixels(new OpenSeadragon.Point(-dx, -dy), true)
         osdViewer.viewport.panBy(delta, true)
         return
       }
