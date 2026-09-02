@@ -97,6 +97,8 @@ export default function Canvas() {
     if (!user || !pageId) return
 
     const DPR = window.devicePixelRatio || 1
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+    const isIPad = /iPad|Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1
 
     const wrap   = wrapRef.current
     const planEl = planRef.current
@@ -163,19 +165,29 @@ export default function Canvas() {
     function invalidateSessions() { sessionsValid = false }
 
     function rebuildSessionsCache() {
-      if (!activePage || !activePage.image || sessionsValid) return
+      if (!activePage || !activePage.image || sessionsValid) {
+        console.log('[Canvas] rebuildSessionsCache skipped - activePage:', !!activePage,
+          'image:', !!activePage?.image, 'valid:', sessionsValid)
+        return
+      }
       const img = activePage.image
+      console.log('[Canvas] rebuilding sessions cache, count:', activePage.sessions.length, 'img:', img.width + 'x' + img.height)
       for (const c of [sessionsHL, sessionsPen, sessionsCount]) {
         c.width = img.width; c.height = img.height
       }
       const hlc  = sessionsHL.getContext('2d')
       const penc = sessionsPen.getContext('2d')
-      if (!hlc || !penc) return
+      if (!hlc || !penc) { console.warn('[Canvas] rebuildSessionsCache: no 2d context'); return }
       hlc.clearRect(0, 0, img.width, img.height)
       penc.clearRect(0, 0, img.width, img.height)
       activePage.sessions.forEach(s => {
         if (s._hidden || !s.hlCanvas || s.hlCanvas.width === 0) return
+        if (s.hlCanvas.width !== img.width || s.hlCanvas.height !== img.height) {
+          console.warn('[Canvas] Session hlCanvas size mismatch vs page image:', s.id,
+            s.hlCanvas.width + 'x' + s.hlCanvas.height, 'vs', img.width + 'x' + img.height)
+        }
         const tinted = tintCanvas(s.hlCanvas, s.color)
+        if (!tinted) console.warn('[Canvas] tintCanvas returned null for session:', s.id)
         if (tinted) hlc.drawImage(tinted, 0, 0)
       })
       activePage.sessions.forEach(s => {
@@ -641,6 +653,8 @@ export default function Canvas() {
     // 'direct') is what lets us tell it apart from a finger for palm rejection.
     let lastTouchPt = null, touchPainting = false
     let pinchStartDist = 0, pinchStartZoom = 1, pinchImgPt = null
+    const MAX_ZOOM = (isSafari || isIPad) ? 3.0 : 10.0
+    const MIN_ZOOM = 0.1
 
     function findStylusTouch(touchList) {
       for (let i = 0; i < touchList.length; i++) {
@@ -709,7 +723,7 @@ export default function Canvas() {
         const mx = ((t0.clientX + t1.clientX) / 2) - r.left
         const my = ((t0.clientY + t1.clientY) / 2) - r.top
         const dist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY)
-        const newZoom = pinchStartZoom * (dist / pinchStartDist)
+        const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, pinchStartZoom * (dist / pinchStartDist)))
         activePage.zoom = newZoom
         activePage.pan = {x: mx - pinchImgPt.x * newZoom, y: my - pinchImgPt.y * newZoom}
         scheduleRedraw(); return
@@ -1476,7 +1490,9 @@ export default function Canvas() {
       if (!dataUrl) return null
       try {
         const img = new Image()
-        await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = dataUrl })
+        const loaded = new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = dataUrl })
+        const timedOut = new Promise((_, reject) => setTimeout(() => reject(new Error('Image load timed out')), 10000))
+        await Promise.race([loaded, timedOut])
         const c = document.createElement('canvas'); c.width = img.width; c.height = img.height
         const cCtx = c.getContext('2d')
         if (cCtx && c.width > 0) cCtx.drawImage(img, 0, 0)
@@ -1710,8 +1726,6 @@ export default function Canvas() {
           ppi = pg.ppi || 72 * Math.max(3.0, DPR * 1.5)
         } else if (isPdf) {
           uzShow('', 'Loading floor plan…', 'Rendering PDF…')
-          const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
-          const isIPad = /iPad|Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1
           const RENDER_SCALE = isIPad ? Math.min(2.0, DPR * 1.0) : Math.max(3.0, DPR * 1.5)
           const pdfjsLib = await import('pdfjs-dist')
           const { default: pdfWorkerUrl } = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
