@@ -788,14 +788,25 @@ export default function Canvas() {
       if (!ans || isNaN(parseFloat(ans))) { cancelCalib(); return }
       activePage.ppf = px / parseFloat(ans)
       activePage.calibrated = true
-      console.log('[Canvas] Saving calibration:', { pageId, ppf: activePage.ppf, calibrated: true, scale: activePage.scale })
+      console.log('[Canvas] Saving calibration:', { pageId, ppf: activePage.ppf, calibrated: true, scale: activePage.scale, ppi: activePage.ppi })
       supabase.from('pages').update({
         pixels_per_foot: activePage.ppf,
         calibrated: true,
         scale: activePage.scale,
-        // ppi: activePage.ppi,  // add back after: ALTER TABLE pages ADD COLUMN ppi numeric;
+        ppi: activePage.ppi,
       }).eq('id', pageId)
-        .then(({ error }) => { console.log('[Canvas] Calibration save result:', error || 'success') })
+        .then(({ error }) => {
+          if (error) {
+            // Older DBs won't have the ppi column yet (ALTER TABLE pages ADD
+            // COLUMN ppi numeric;) — retry without it so calibration still saves.
+            console.warn('[Canvas] Calibration save with ppi failed, retrying without it:', error)
+            supabase.from('pages').update({
+              pixels_per_foot: activePage.ppf, calibrated: true, scale: activePage.scale,
+            }).eq('id', pageId).then(({ error: err2 }) => console.log('[Canvas] Calibration save (fallback) result:', err2 || 'success'))
+          } else {
+            console.log('[Canvas] Calibration save result: success')
+          }
+        })
       if (calibInfoRef.current) { calibInfoRef.current.style.display = 'inline'; calibInfoRef.current.textContent = 'Calibrated: ' + activePage.ppf.toFixed(1) + ' px/ft' }
       cancelCalib(); updateSF()
     }
@@ -1878,8 +1889,19 @@ export default function Canvas() {
         }
 
         if (savedPPF && savedCalibrated) {
-          activePage.ppf = savedPPF; activePage.calibrated = true
-          if (calibInfoRef.current) { calibInfoRef.current.style.display = 'inline'; calibInfoRef.current.textContent = 'Calibrated: ' + savedPPF.toFixed(1) + ' px/ft' }
+          // pixels_per_foot is an absolute measurement taken against whatever
+          // resolution the image was loaded at when calibrated. If this device
+          // loaded the image at a different resolution (e.g. an iPad-downscaled
+          // copy vs. the full-res PC render), applying it unscaled gives wrong
+          // SF — rescale by the ratio of current-session ppi to calibration-time
+          // ppi when we have both on record.
+          const savedPPI = pg.ppi || null
+          activePage.ppf = (savedPPI && activePage.ppi)
+            ? savedPPF * (activePage.ppi / savedPPI)
+            : savedPPF
+          activePage.calibrated = true
+          console.log('[Canvas] Applying calibration:', { savedPPF, savedPPI, currentPPI: activePage.ppi, appliedPPF: activePage.ppf })
+          if (calibInfoRef.current) { calibInfoRef.current.style.display = 'inline'; calibInfoRef.current.textContent = 'Calibrated: ' + activePage.ppf.toFixed(1) + ' px/ft' }
         }
 
       } catch (err) {
