@@ -1794,18 +1794,32 @@ export default function Canvas() {
           offscreen.width = viewport.width; offscreen.height = viewport.height
           await page.render({ canvasContext: offscreen.getContext('2d'), viewport }).promise
           img = offscreen
-          if (isIPad && (img.width > 4096 || img.height > 4096)) {
-            const capScale = 4096 / Math.max(img.width, img.height)
-            const capped = document.createElement('canvas')
-            capped.width = Math.round(img.width * capScale)
-            capped.height = Math.round(img.height * capScale)
-            capped.getContext('2d').drawImage(img, 0, 0, capped.width, capped.height)
-            img = capped
-            ppi = ppi * capScale
-          }
         } else {
           img = new Image()
           await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url })
+        }
+
+        // Keep the shared Storage cache (below) at whatever quality was just
+        // loaded/rendered — only the local addPage() copy gets downscaled for
+        // iPad, so a future desktop viewer never inherits an iPad-shrunk cache.
+        const fullResImg = img
+
+        // iPad/Safari has a much tighter per-tab memory ceiling than desktop.
+        // Every downstream canvas (live draw layers, session composites) is
+        // sized 1:1 to this image, so keeping it small here is what actually
+        // keeps drawing and session compositing from crashing the tab.
+        if (isIPad || isSafari) {
+          const MAX_DIM = 2048
+          if (img.width > MAX_DIM || img.height > MAX_DIM) {
+            const scale = MAX_DIM / Math.max(img.width, img.height)
+            const scaled = document.createElement('canvas')
+            scaled.width = Math.round(img.width * scale)
+            scaled.height = Math.round(img.height * scale)
+            scaled.getContext('2d').drawImage(img, 0, 0, scaled.width, scaled.height)
+            img = scaled
+            if (ppi) ppi = ppi * scale
+            console.log('[Canvas] iPad: downscaled image to', scaled.width, 'x', scaled.height)
+          }
         }
 
         // Restore scale dropdown to saved state before addPage reads it
@@ -1821,7 +1835,7 @@ export default function Canvas() {
         // Cache PDF render as PNG for faster future loads
         if (isPdf && !pg.cached_image_url) {
           try {
-            const blob = await new Promise(resolve => img.toBlob(resolve, 'image/png'))
+            const blob = await new Promise(resolve => fullResImg.toBlob(resolve, 'image/png'))
             const cachePath = `${dbProjectId}/cache_${pageId}.png`
             const { error: upErr } = await supabase.storage
               .from('floor-plans')
