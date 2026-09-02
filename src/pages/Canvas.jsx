@@ -1817,6 +1817,15 @@ export default function Canvas() {
       }
       invalidateSessions()
       redrawAll(); renderSessions(); updateSF(); updateProgressBar(); saveDayToHistory()
+      if (isIPad && sessionsHL.width > 0) {
+        const checkCtx = sessionsHL.getContext('2d')
+        const checkData = checkCtx.getImageData(0, 0, sessionsHL.width, sessionsHL.height).data
+        let visiblePixels = 0
+        for (let i = 3; i < checkData.length; i += 4) if (checkData[i] > 10) visiblePixels++
+        alert(`sessionsHL composite: ${sessionsHL.width}x${sessionsHL.height}, visible px: ${visiblePixels} / ${checkData.length / 4}\n` +
+          `activePage.zoom=${activePage.zoom.toFixed(4)} pan=(${activePage.pan.x.toFixed(1)}, ${activePage.pan.y.toFixed(1)})\n` +
+          `cW=${cW} cH=${cH} tileMeta=${!!activePage.tileMeta}`)
+      }
     }
 
     // ── REALTIME SUBSCRIPTION ─────────────────────────────────────────────────
