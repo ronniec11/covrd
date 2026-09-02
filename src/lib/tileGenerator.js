@@ -2,6 +2,11 @@ import { supabase } from './supabase'
 
 const BUCKET = 'floor-plans'
 const TILE_SIZE = 256
+// Largest single render/decode allowed per canvas — same ceiling used
+// elsewhere in the app for iPad memory safety (Canvas.jsx MAX_DIM). Any
+// pyramid level bigger than this gets rendered in CHUNK-sized pieces
+// instead of one shot, then sliced into TILE_SIZE output tiles.
+const CHUNK = 2048
 // Base render quality for the sharpest (max) pyramid level — matches the
 // desktop RENDER_SCALE used elsewhere in the app (Canvas.jsx) so tiles look
 // as sharp as today's desktop floor plan rendering.
@@ -12,16 +17,13 @@ function levelDims(fullW, fullH, maxLevel, level) {
   return { w: Math.max(1, Math.ceil(fullW / factor)), h: Math.max(1, Math.ceil(fullH / factor)) }
 }
 
-function tileCounts(w, h) {
-  return { cols: Math.ceil(w / TILE_SIZE), rows: Math.ceil(h / TILE_SIZE) }
-}
-
 function pyramidLevels(fullW, fullH) {
   const maxLevel = Math.ceil(Math.log2(Math.max(fullW, fullH)))
   let minLevel = maxLevel
   while (minLevel > 0) {
-    const { w, h } = levelDims(fullW, fullH, maxLevel, minLevel - 1)
-    if (w <= TILE_SIZE && h <= TILE_SIZE) { minLevel -= 1 } else { break }
+    const { w, h } = levelDims(fullW, fullH, maxLevel, minLevel)
+    if (w <= TILE_SIZE && h <= TILE_SIZE) break
+    minLevel -= 1
   }
   return { maxLevel, minLevel }
 }
@@ -57,14 +59,47 @@ function canvasToBlob(canvas, format, quality) {
   })
 }
 
+// Slices `srcCanvas` (a rendered chunk/level, positioned at (chunkX,chunkY)
+// within the full level) into TILE_SIZE output tiles and queues an
+// upload job for each — shared by both the PDF chunk renderer and the
+// raster level slicer below, since once a source canvas exists in memory
+// this step is identical for both.
+function queueTileSlices(jobs, srcCanvas, chunkX, chunkY, levelW, levelH, pathPrefix, level, format, quality) {
+  // chunkX/chunkY are always exact multiples of TILE_SIZE at both call sites
+  // (CHUNK is a multiple of TILE_SIZE for the PDF path; 0 for the raster path).
+  const firstCol = Math.floor(chunkX / TILE_SIZE)
+  const firstRow = Math.floor(chunkY / TILE_SIZE)
+  const lastCol = Math.floor((Math.min(chunkX + srcCanvas.width, levelW) - 1) / TILE_SIZE)
+  const lastRow = Math.floor((Math.min(chunkY + srcCanvas.height, levelH) - 1) / TILE_SIZE)
+  for (let row = firstRow; row <= lastRow; row++) {
+    for (let col = firstCol; col <= lastCol; col++) {
+      const tileX = col * TILE_SIZE, tileY = row * TILE_SIZE
+      const tw = Math.min(TILE_SIZE, levelW - tileX)
+      const th = Math.min(TILE_SIZE, levelH - tileY)
+      const sx = tileX - chunkX, sy = tileY - chunkY
+      jobs.push(async () => {
+        const tileCanvas = document.createElement('canvas')
+        tileCanvas.width = tw; tileCanvas.height = th
+        tileCanvas.getContext('2d').drawImage(srcCanvas, sx, sy, tw, th, 0, 0, tw, th)
+        const blob = await canvasToBlob(tileCanvas, format, quality)
+        await uploadTile(pathPrefix, level, col, row, blob, format)
+      })
+    }
+  }
+}
+
 /**
- * Generates a tile pyramid from a PDF's first page, rendering each tile
- * directly from the PDF at its target resolution (via a translated render
- * transform) rather than rendering the whole page once and slicing it — so
- * generation never allocates a full-page-sized canvas, keeping it safe to
- * run on iPad.
+ * Generates a tile pyramid from a PDF's first page. Renders each level in
+ * CHUNK-sized pieces (memory-bounded — never allocates a canvas bigger than
+ * CHUNK×CHUNK, so this is safe to run on iPad) rather than one render call
+ * per final TILE_SIZE tile: for a large sheet that's the difference between
+ * ~2000 individual pdf.js render passes and ~50, since each render replays
+ * the page's full operator list regardless of how small the output canvas
+ * is — tile-per-render was measured to make generation impractically slow.
+ * Output tiles are sliced from each rendered chunk via cheap canvas copies.
  */
 export async function generatePdfTiles(pdfUrl, { projectId, pageId, format = 'png', onProgress } = {}) {
+  console.log('[tileGenerator] Starting PDF tile generation:', pdfUrl)
   const pdfjsLib = await import('pdfjs-dist')
   const { default: pdfWorkerUrl } = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
   pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
@@ -76,54 +111,67 @@ export async function generatePdfTiles(pdfUrl, { projectId, pageId, format = 'pn
   const fullH = Math.round(baseViewport.height)
   const { maxLevel, minLevel } = pyramidLevels(fullW, fullH)
   const pathPrefix = `${projectId}/tiles/${pageId}`
+  console.log('[tileGenerator] PDF page size at BASE_SCALE:', fullW, 'x', fullH, 'levels:', minLevel, '-', maxLevel)
 
   const jobs = []
+  let chunkCount = 0
   for (let level = minLevel; level <= maxLevel; level++) {
     const { w: lw, h: lh } = levelDims(fullW, fullH, maxLevel, level)
     const levelScale = BASE_SCALE / 2 ** (maxLevel - level)
     const levelViewport = page.getViewport({ scale: levelScale })
-    const { cols, rows } = tileCounts(lw, lh)
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const tw = Math.min(TILE_SIZE, lw - col * TILE_SIZE)
-        const th = Math.min(TILE_SIZE, lh - row * TILE_SIZE)
+    const chunkCols = Math.ceil(lw / CHUNK)
+    const chunkRows = Math.ceil(lh / CHUNK)
+    for (let cr = 0; cr < chunkRows; cr++) {
+      for (let cc = 0; cc < chunkCols; cc++) {
+        const chunkX = cc * CHUNK, chunkY = cr * CHUNK
+        const cw = Math.min(CHUNK, lw - chunkX)
+        const ch = Math.min(CHUNK, lh - chunkY)
+        chunkCount++
         jobs.push(async () => {
-          const tileCanvas = document.createElement('canvas')
-          tileCanvas.width = tw; tileCanvas.height = th
+          const chunkCanvas = document.createElement('canvas')
+          chunkCanvas.width = cw; chunkCanvas.height = ch
           await page.render({
-            canvasContext: tileCanvas.getContext('2d'),
+            canvasContext: chunkCanvas.getContext('2d'),
             viewport: levelViewport,
-            transform: [1, 0, 0, 1, -col * TILE_SIZE, -row * TILE_SIZE],
+            transform: [1, 0, 0, 1, -chunkX, -chunkY],
           }).promise
-          const blob = await canvasToBlob(tileCanvas, format)
-          await uploadTile(pathPrefix, level, col, row, blob, format)
+          const tileJobs = []
+          queueTileSlices(tileJobs, chunkCanvas, chunkX, chunkY, lw, lh, pathPrefix, level, format)
+          await runPool(tileJobs, 6)
         })
       }
     }
   }
+  console.log('[tileGenerator] Rendering', chunkCount, 'chunk(s) across', maxLevel - minLevel + 1, 'levels')
 
-  await runPool(jobs, 5, (done, total) => onProgress?.(done, total))
+  let done = 0
+  await runPool(jobs, 2, () => {
+    done++
+    console.log('[tileGenerator] Rendered chunk', done, '/', chunkCount)
+    onProgress?.(done, chunkCount)
+  })
 
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(pathPrefix)
+  console.log('[tileGenerator] PDF tiling complete:', data.publicUrl)
   return { baseUrl: data.publicUrl, width: fullW, height: fullH, tileSize: TILE_SIZE, minLevel, maxLevel, format }
 }
 
 /**
  * Generates a tile pyramid from a plain raster image (JPG/PNG upload).
- * Unlike the PDF path, a raster source has to be decoded once in full before
- * any region can be cropped from it — so this decodes it exactly once,
- * bounded to the same MAX_DIM cap already used for iPad viewing elsewhere in
+ * A raster source has to be decoded once in full before any region can be
+ * cropped from it — so this decodes it exactly once, bounded to the same
+ * MAX_DIM-equivalent (CHUNK) cap already used for iPad viewing elsewhere in
  * the app, then progressively halves that single in-memory canvas to build
  * each lower pyramid level (sharper than re-downsampling from the original
  * each time) and slices tiles from each level.
  */
 export async function generateRasterTiles(imageUrl, { projectId, pageId, format = 'jpeg', quality = 0.9, onProgress } = {}) {
-  const MAX_DIM = 4096
+  console.log('[tileGenerator] Starting raster tile generation:', imageUrl)
   const img = new Image()
   img.crossOrigin = 'anonymous'
   await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = imageUrl })
 
-  const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height))
+  const scale = Math.min(1, CHUNK / Math.max(img.width, img.height))
   const fullW = Math.round(img.width * scale)
   const fullH = Math.round(img.height * scale)
   let levelCanvas = document.createElement('canvas')
@@ -132,6 +180,7 @@ export async function generateRasterTiles(imageUrl, { projectId, pageId, format 
 
   const { maxLevel, minLevel } = pyramidLevels(fullW, fullH)
   const pathPrefix = `${projectId}/tiles/${pageId}`
+  console.log('[tileGenerator] Raster image size (capped):', fullW, 'x', fullH, 'levels:', minLevel, '-', maxLevel)
   const levelCanvases = { [maxLevel]: levelCanvas }
   for (let level = maxLevel - 1; level >= minLevel; level--) {
     const { w: lw, h: lh } = levelDims(fullW, fullH, maxLevel, level)
@@ -145,27 +194,15 @@ export async function generateRasterTiles(imageUrl, { projectId, pageId, format 
   const jobs = []
   for (let level = minLevel; level <= maxLevel; level++) {
     const src = levelCanvases[level]
-    const { cols, rows } = tileCounts(src.width, src.height)
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const tw = Math.min(TILE_SIZE, src.width - col * TILE_SIZE)
-        const th = Math.min(TILE_SIZE, src.height - row * TILE_SIZE)
-        jobs.push(async () => {
-          const tileCanvas = document.createElement('canvas')
-          tileCanvas.width = tw; tileCanvas.height = th
-          tileCanvas.getContext('2d').drawImage(
-            src, col * TILE_SIZE, row * TILE_SIZE, tw, th, 0, 0, tw, th
-          )
-          const blob = await canvasToBlob(tileCanvas, format, quality)
-          await uploadTile(pathPrefix, level, col, row, blob, format)
-        })
-      }
-    }
+    queueTileSlices(jobs, src, 0, 0, src.width, src.height, pathPrefix, level, format, quality)
   }
+  console.log('[tileGenerator] Slicing', jobs.length, 'tile(s)')
 
-  await runPool(jobs, 5, (done, total) => onProgress?.(done, total))
+  let done = 0
+  await runPool(jobs, 6, () => { done++; onProgress?.(done, jobs.length) })
 
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(pathPrefix)
+  console.log('[tileGenerator] Raster tiling complete:', data.publicUrl)
   return { baseUrl: data.publicUrl, width: fullW, height: fullH, tileSize: TILE_SIZE, minLevel, maxLevel, format }
 }
 
