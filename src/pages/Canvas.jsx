@@ -1180,9 +1180,9 @@ export default function Canvas() {
         delBtn.addEventListener('click', ev => deleteSession(pg.id, s.id, ev))
 
         const top = document.createElement('div'); top.className = 'ct-scard-top'
-        // User avatar dot (profile color) + session name
+        // Highlight color dot (what was actually painted) + session name
         const dot = document.createElement('div'); dot.className = 'ct-scard-dot'
-        dot.style.background = s.userColor || s.color || '#4ade80'
+        dot.style.background = s.color || s.userColor || '#4ade80'
         dot.title = s.userName || s.name
         const nm  = document.createElement('div'); nm.className = 'ct-scard-name'; nm.textContent = s.name
         const sb  = document.createElement('span'); sb.className = 'ct-solo-badge'; sb.textContent = 'SOLO'
