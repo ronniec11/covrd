@@ -637,23 +637,43 @@ export default function Canvas() {
     }
 
     // ── TOUCH ─────────────────────────────────────────────────────────────────
-    let touchPanStart = null, touchPanOrigin = null, lastTouchPt = null, touchPainting = false
+    // Apple Pencil fires touch events too; Safari's Touch.touchType ('stylus' vs
+    // 'direct') is what lets us tell it apart from a finger for palm rejection.
+    let lastTouchPt = null, touchPainting = false
+    let pinchStartDist = 0, pinchStartZoom = 1, pinchImgPt = null
+
+    function findStylusTouch(touchList) {
+      for (let i = 0; i < touchList.length; i++) {
+        if (touchList[i].touchType === 'stylus') return touchList[i]
+      }
+      return null
+    }
 
     function getTouchPos(e) {
       const rect = drawEl.getBoundingClientRect()
-      const t = e.touches[0] || e.changedTouches[0]
+      const list = e.touches.length ? e.touches : e.changedTouches
+      const t = findStylusTouch(list) || list[0]
       return {x: t.clientX - rect.left, y: t.clientY - rect.top}
     }
 
     function onTouchStart(e) {
       e.preventDefault(); if (!activePage) return
-      if (e.touches.length === 2) {
+      const stylusTouch = findStylusTouch(e.touches)
+      if (e.touches.length === 2 && !stylusTouch) {
+        // A second finger landed — undo the stray dot the first touch may have
+        // just painted, then switch to two-finger pan/pinch-zoom.
+        if (touchPainting) undoLast()
         touchPainting = false; lastTouchPt = null
         const r = drawEl.getBoundingClientRect()
-        const mx = ((e.touches[0].clientX + e.touches[1].clientX) / 2) - r.left
-        const my = ((e.touches[0].clientY + e.touches[1].clientY) / 2) - r.top
-        touchPanStart = {x: mx, y: my}; touchPanOrigin = {...activePage.pan}; return
+        const t0 = e.touches[0], t1 = e.touches[1]
+        const mx = ((t0.clientX + t1.clientX) / 2) - r.left
+        const my = ((t0.clientY + t1.clientY) / 2) - r.top
+        pinchStartDist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY)
+        pinchStartZoom = activePage.zoom
+        pinchImgPt = s2i(mx, my)
+        return
       }
+      // Single touch, or a pencil touch (with a resting palm alongside it).
       const pos = getTouchPos(e)
       if (calibrating) { handleCalibClick(pos.x, pos.y); return }
       if (tool === 'count') {
@@ -682,11 +702,16 @@ export default function Canvas() {
 
     function onTouchMove(e) {
       e.preventDefault(); if (!activePage) return
-      if (e.touches.length === 2 && touchPanStart) {
+      const stylusTouch = findStylusTouch(e.touches)
+      if (e.touches.length === 2 && !stylusTouch && pinchStartDist) {
         const r = drawEl.getBoundingClientRect()
-        const mx = ((e.touches[0].clientX + e.touches[1].clientX) / 2) - r.left
-        const my = ((e.touches[0].clientY + e.touches[1].clientY) / 2) - r.top
-        activePage.pan = {x: touchPanOrigin.x + (mx - touchPanStart.x), y: touchPanOrigin.y + (my - touchPanStart.y)}
+        const t0 = e.touches[0], t1 = e.touches[1]
+        const mx = ((t0.clientX + t1.clientX) / 2) - r.left
+        const my = ((t0.clientY + t1.clientY) / 2) - r.top
+        const dist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY)
+        const newZoom = pinchStartZoom * (dist / pinchStartDist)
+        activePage.zoom = newZoom
+        activePage.pan = {x: mx - pinchImgPt.x * newZoom, y: my - pinchImgPt.y * newZoom}
         scheduleRedraw(); return
       }
       if (!touchPainting) return
@@ -697,11 +722,14 @@ export default function Canvas() {
 
     function onTouchEnd(e) {
       e.preventDefault()
-      touchPainting = false; touchPanStart = null; lastTouchPt = null
+      touchPainting = false; lastTouchPt = null
+      pinchStartDist = 0; pinchImgPt = null
       cancelAnimationFrame(rafId); rafId = 0
       redrawAll(); updateSF()
       if (checkHasLiveContent()) updateUnsaved(true)
     }
+
+    function onGesturePrevent(e) { e.preventDefault() }
 
     // ── CALIBRATION ───────────────────────────────────────────────────────────
     function startCalib() {
@@ -1063,7 +1091,7 @@ export default function Canvas() {
     // ── EXPORT ────────────────────────────────────────────────────────────────
     function exportAll() {
       const date = getCurrentDate()
-      let txt = 'Covrd - Daily Report\nDate: ' + date + '\n\n'; let grand = 0
+      let txt = 'Squeegee - Daily Report\nDate: ' + date + '\n\n'; let grand = 0
       pages.forEach(pg => {
         txt += '=== ' + pg.name + ' ===\n'
         pg.sessions.forEach((s, i) => {
@@ -1077,7 +1105,7 @@ export default function Canvas() {
       txt += 'GRAND TOTAL: ' + Math.round(grand).toLocaleString() + ' SF\n'
       const blob = new Blob([txt], {type: 'text/plain'})
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
-      a.download = 'cleantrack-' + date + '.txt'; a.click()
+      a.download = 'squeegee-' + date + '.txt'; a.click()
 
       pages.forEach(pg => {
         if (!pg.image) return
@@ -1090,7 +1118,7 @@ export default function Canvas() {
         pg.sessions.forEach(s => { if (s.penCanvas) ec.drawImage(s.penCanvas, 0, 0) })
         const lk = document.createElement('a')
         lk.href = exp.toDataURL('image/png')
-        lk.download = 'cleantrack-' + pg.name.replace(/\s+/g, '-') + '-' + date + '.png'
+        lk.download = 'squeegee-' + pg.name.replace(/\s+/g, '-') + '-' + date + '.png'
         lk.click()
       })
     }
@@ -1682,7 +1710,9 @@ export default function Canvas() {
           ppi = pg.ppi || 72 * Math.max(3.0, DPR * 1.5)
         } else if (isPdf) {
           uzShow('', 'Loading floor plan…', 'Rendering PDF…')
-          const RENDER_SCALE = Math.max(3.0, DPR * 1.5)
+          const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+          const isIPad = /iPad|Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1
+          const RENDER_SCALE = isIPad ? Math.min(2.0, DPR * 1.0) : Math.max(3.0, DPR * 1.5)
           const pdfjsLib = await import('pdfjs-dist')
           const { default: pdfWorkerUrl } = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
           pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
@@ -1694,6 +1724,15 @@ export default function Canvas() {
           offscreen.width = viewport.width; offscreen.height = viewport.height
           await page.render({ canvasContext: offscreen.getContext('2d'), viewport }).promise
           img = offscreen
+          if (isIPad && (img.width > 4096 || img.height > 4096)) {
+            const capScale = 4096 / Math.max(img.width, img.height)
+            const capped = document.createElement('canvas')
+            capped.width = Math.round(img.width * capScale)
+            capped.height = Math.round(img.height * capScale)
+            capped.getContext('2d').drawImage(img, 0, 0, capped.width, capped.height)
+            img = capped
+            ppi = ppi * capScale
+          }
         } else {
           img = new Image()
           await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url })
@@ -1812,6 +1851,12 @@ export default function Canvas() {
     drawEl.addEventListener('touchstart', onTouchStart, {passive: false})
     drawEl.addEventListener('touchmove', onTouchMove, {passive: false})
     drawEl.addEventListener('touchend', onTouchEnd, {passive: false})
+    drawEl.addEventListener('touchcancel', onTouchEnd, {passive: false})
+    // Safari's legacy gesture events drive the OS-level pinch-to-zoom-page
+    // gesture independently of touch events — block them so our own pinch
+    // handling in onTouchMove isn't fighting the browser for the gesture.
+    drawEl.addEventListener('gesturestart', onGesturePrevent)
+    drawEl.addEventListener('gesturechange', onGesturePrevent)
     window.addEventListener('mouseup', onUp)
     window.addEventListener('keydown', e => { if (e.key === 'Escape' && calibrating) cancelCalib() })
     window.addEventListener('resize', onResize)
@@ -1843,6 +1888,9 @@ export default function Canvas() {
       drawEl.removeEventListener('touchstart', onTouchStart)
       drawEl.removeEventListener('touchmove', onTouchMove)
       drawEl.removeEventListener('touchend', onTouchEnd)
+      drawEl.removeEventListener('touchcancel', onTouchEnd)
+      drawEl.removeEventListener('gesturestart', onGesturePrevent)
+      drawEl.removeEventListener('gesturechange', onGesturePrevent)
       window.removeEventListener('mouseup', onUp)
       window.removeEventListener('resize', onResize)
       const toast = document.getElementById('ct-toast')

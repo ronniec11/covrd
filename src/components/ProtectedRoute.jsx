@@ -17,7 +17,7 @@ export default function ProtectedRoute({ children }) {
       <div className="h-screen flex items-center justify-center bg-bg">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-          <p className="text-muted text-sm">Loading Covrd...</p>
+          <p className="text-muted text-sm">Loading Squeegee...</p>
         </div>
       </div>
     )

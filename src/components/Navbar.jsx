@@ -1,6 +1,6 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import CovrdLogo from '../assets/covrd-logo-full.svg'
+import SqueegeeLogo from '../assets/squeegee-logo-full.svg'
 
 export default function Navbar() {
   const { profile, signOut } = useAuth()
@@ -17,7 +17,7 @@ export default function Navbar() {
   return (
     <header className="h-14 bg-surface border-b border-border flex items-center px-4 gap-4 shrink-0 z-40">
       <Link to="/projects" className="flex items-center group">
-        <img src={CovrdLogo} alt="Covrd" className="h-8 w-auto" />
+        <img src={SqueegeeLogo} alt="Squeegee" className="h-8 w-auto" />
       </Link>
 
       {!isCanvas && (
