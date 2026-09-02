@@ -99,6 +99,11 @@ export default function Canvas() {
     const DPR = window.devicePixelRatio || 1
     const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
     const isIPad = /iPad|Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1
+    // Each undo entry snapshots the FULL liveHl/livePen canvases via getImageData —
+    // at full floor-plan resolution that's tens of MB per entry. 40 of those is
+    // fine on desktop but can blow through Safari's tighter per-tab memory
+    // budget on iPad after enough strokes, crashing the tab mid-drawing.
+    const MAX_UNDO = (isSafari || isIPad) ? 8 : 40
 
     const wrap   = wrapRef.current
     const planEl = planRef.current
@@ -511,7 +516,7 @@ export default function Canvas() {
           pen: livePenCtx.getImageData(0, 0, livePenCanvas.width, livePenCanvas.height),
           cnt: [...liveCountMarkers],
         })
-        if (undoStack.length > 40) undoStack.shift()
+        if (undoStack.length > MAX_UNDO) undoStack.shift()
         const pt = s2i(pos.x, pos.y)
         doPaint(pt.x, pt.y, null); lastPenPt = pt
       }
@@ -710,7 +715,7 @@ export default function Canvas() {
         pen: livePenCtx.getImageData(0, 0, livePenCanvas.width, livePenCanvas.height),
         cnt: [...liveCountMarkers],
       })
-      if (undoStack.length > 40) undoStack.shift()
+      if (undoStack.length > MAX_UNDO) undoStack.shift()
       const pt = s2i(pos.x, pos.y)
       doPaint(pt.x, pt.y, null); lastTouchPt = pt
     }
