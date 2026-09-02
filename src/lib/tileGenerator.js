@@ -166,7 +166,15 @@ export async function generatePdfTiles(pdfUrl, { projectId, pageId, format = 'pn
   console.log('[tileGenerator] Rendering', chunkCount, 'chunk(s) across', maxLevel - minLevel + 1, 'levels')
 
   let done = 0
-  await runPool(jobs, 2, () => {
+  // Sequential (concurrency 1) on purpose: level 8 (the smallest, ~189x135px)
+  // hung indefinitely when run concurrently with level 9's render — both call
+  // page.render() on the same shared PDFPageProxy with very different
+  // viewport scales/transforms, and pdf.js's shared operator-list state
+  // across concurrent render tasks on one page appears not to handle that
+  // combination reliably. One render at a time removes the race entirely;
+  // it's slower but each chunk render is fast on its own (seconds, not the
+  // page-complexity-dependent slowness the old per-final-tile design had).
+  await runPool(jobs, 1, () => {
     done++
     console.log('[tileGenerator] Rendered chunk', done, '/', chunkCount)
     onProgress?.(done, chunkCount)
