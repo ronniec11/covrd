@@ -59,13 +59,9 @@
 .ct-upload-sub { font-size: 12px; color: #7a7870; margin-top: 4px; }
 .ct-canvas { position: absolute; top: 0; left: 0; display: none; }
 .ct-draw-canvas { pointer-events: auto; cursor: crosshair; touch-action: none; }
-.ct-osd-viewer { width: 100%; height: 100%; background: transparent; touch-action: none; }
-/* Phase 2 view-only spike: OSD drives its own native pan/pinch/zoom on
-   tiled pages, so the overlay canvases (including drawEl) must stop
-   capturing pointer events, letting them fall through to the OSD viewer
-   underneath. Re-enabled the moment Phase 3 wires real drawing back in. */
-.ct-canvas-wrap.ct-tiled-view .ct-canvas { pointer-events: none; }
-.ct-canvas-wrap.ct-tiled-view .ct-osd-viewer { pointer-events: auto; }
+/* pointer-events: none — OSD is a renderer only (Phase 3); drawEl stays the
+   sole input target on tiled pages exactly like a non-tiled one. */
+.ct-osd-viewer { width: 100%; height: 100%; background: transparent; touch-action: none; pointer-events: none; }
 .ct-cursor-ring {
   position: absolute; border-radius: 50%; pointer-events: none;
   transform: translate(-50%,-50%); display: none; z-index: 30;

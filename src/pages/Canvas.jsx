@@ -107,11 +107,6 @@ export default function Canvas() {
     // fine on desktop but can blow through Safari's tighter per-tab memory
     // budget on iPad after enough strokes, crashing the tab mid-drawing.
     const MAX_UNDO = (isSafari || isIPad) ? 8 : 40
-    // Phase 2 spike: tiled pages render through OpenSeadragon with its own
-    // native pan/pinch/zoom, drawing disabled, purely to validate on a real
-    // iPad that tiled rendering is actually smooth/sharp before Phase 3
-    // rewires the existing drawing input to drive OSD's viewport instead.
-    const OSD_VIEW_ONLY = true
 
     const wrap   = wrapRef.current
     const planEl = planRef.current
@@ -282,14 +277,16 @@ export default function Canvas() {
     }
 
     // ── OPENSEADRAGON (tiled pages) ──────────────────────────────────────────
-    // Phase 2 spike: OSD renders the base image and drives its own native
-    // pan/pinch/zoom; drawing input is disabled (OSD_VIEW_ONLY) while this is
-    // validated on a real iPad. activePage.zoom/pan get derived from OSD's
-    // viewport on every change so s2i(), calibration, and SF math — which
-    // only ever read those two values — need no changes at all.
+    // Phase 3: OSD is a renderer-only engine here — it draws tiles and owns
+    // the viewport math, but never handles input itself (all its native
+    // gestures are disabled below). drawEl stays the sole event target
+    // exactly like a non-tiled page; onWheel/onDown/onMove/onTouchStart/
+    // onTouchMove drive OSD's viewport via zoomAtScreenPoint/panByScreenDelta
+    // instead of mutating activePage.pan/.zoom directly. activePage.zoom/pan
+    // still get derived from OSD's viewport on every change (below), so
+    // s2i(), calibration, and SF math need no changes at all.
     function teardownOsdViewer() {
       if (osdViewer) { osdViewer.destroy(); osdViewer = null }
-      wrap.classList.remove('ct-tiled-view')
       osdContainerEl.style.display = 'none'
       planEl.style.display = 'block'
     }
@@ -298,7 +295,6 @@ export default function Canvas() {
       teardownOsdViewer()
       planEl.style.display = 'none'
       osdContainerEl.style.display = 'block'
-      if (OSD_VIEW_ONLY) wrap.classList.add('ct-tiled-view')
 
       osdViewer = OpenSeadragon({
         element: osdContainerEl,
@@ -311,8 +307,8 @@ export default function Canvas() {
         // this app's MIN_ZOOM/MAX_ZOOM constants — those are calibrated in a
         // different unit (screen px per image px) than OSD's viewport-zoom
         // level, so plugging them in directly would clamp to the wrong range.
-        gestureSettingsMouse: { dragToPan: OSD_VIEW_ONLY, pinchToZoom: OSD_VIEW_ONLY, scrollToZoom: OSD_VIEW_ONLY, clickToZoom: false },
-        gestureSettingsTouch: { dragToPan: OSD_VIEW_ONLY, pinchToZoom: OSD_VIEW_ONLY, scrollToZoom: OSD_VIEW_ONLY, clickToZoom: false },
+        gestureSettingsMouse: { dragToPan: false, pinchToZoom: false, scrollToZoom: false, clickToZoom: false },
+        gestureSettingsTouch: { dragToPan: false, pinchToZoom: false, scrollToZoom: false, clickToZoom: false },
       })
 
       osdViewer.addHandler('update-viewport', () => {
@@ -551,7 +547,7 @@ export default function Canvas() {
       if (calibrating && e.button === 0) { handleCalibClick(pos.x, pos.y); return }
       if (e.button === 1 || e.altKey) {
         isPanning = true
-        panStart = {x: e.clientX - activePage.pan.x, y: e.clientY - activePage.pan.y}
+        panStart = {x: e.clientX, y: e.clientY}
         drawEl.style.cursor = 'grabbing'; return
       }
       if (e.button === 0) {
@@ -614,8 +610,9 @@ export default function Canvas() {
       }
 
       if (isPanning) {
-        activePage.pan = {x: e.clientX - panStart.x, y: e.clientY - panStart.y}
-        scheduleRedraw(); return
+        panByScreenDelta(e.clientX - panStart.x, e.clientY - panStart.y)
+        panStart = {x: e.clientX, y: e.clientY}
+        return
       }
       if (isPainting) {
         const pt = s2i(pos.x, pos.y)
@@ -684,40 +681,60 @@ export default function Canvas() {
     }
 
     // ── ZOOM & PAN ────────────────────────────────────────────────────────────
+    // Phase 3: on tiled iPad pages, OSD owns the base image and its viewport
+    // is the single source of truth for activePage.zoom/pan (see the
+    // update-viewport handler in setupOsdViewer) — so every navigation input
+    // below has to drive OSD's viewport instead of mutating activePage
+    // directly there. These two helpers are the only place that decides
+    // which path to take; every call site below just calls them.
+    function zoomAtScreenPoint(f, sx, sy) {
+      if (osdViewer) {
+        const refPoint = osdViewer.viewport.pointFromPixel(new OpenSeadragon.Point(sx, sy), true)
+        osdViewer.viewport.zoomBy(f, refPoint, true)
+        return
+      }
+      activePage.pan.x = sx - (sx - activePage.pan.x) * f
+      activePage.pan.y = sy - (sy - activePage.pan.y) * f
+      activePage.zoom *= f
+      scheduleRedraw()
+    }
+
+    function panByScreenDelta(dx, dy) {
+      if (osdViewer) {
+        const delta = osdViewer.viewport.deltaPointsFromPixels(new OpenSeadragon.Point(dx, dy), true)
+        osdViewer.viewport.panBy(delta, true)
+        return
+      }
+      activePage.pan.x += dx
+      activePage.pan.y += dy
+      scheduleRedraw()
+    }
+
     function onWheel(e) {
       e.preventDefault(); if (!activePage) return
       if (e.ctrlKey) {
         const f = e.deltaY < 0 ? 1.08 : 0.926
         const pos = getOffset(e)
-        activePage.pan.x = pos.x - (pos.x - activePage.pan.x) * f
-        activePage.pan.y = pos.y - (pos.y - activePage.pan.y) * f
-        activePage.zoom *= f; scheduleRedraw(); return
+        zoomAtScreenPoint(f, pos.x, pos.y); return
       }
       if (e.deltaX !== 0 || e.shiftKey) {
-        activePage.pan.x -= e.deltaX * 1.5
-        activePage.pan.y -= e.deltaY * 1.5
-        scheduleRedraw(); return
+        panByScreenDelta(-e.deltaX * 1.5, -e.deltaY * 1.5); return
       }
       const f = e.deltaY < 0 ? 1.12 : 0.893
       const pos = getOffset(e)
-      activePage.pan.x = pos.x - (pos.x - activePage.pan.x) * f
-      activePage.pan.y = pos.y - (pos.y - activePage.pan.y) * f
-      activePage.zoom *= f; scheduleRedraw()
+      zoomAtScreenPoint(f, pos.x, pos.y)
     }
 
     function doZoom(f) {
       if (!activePage) return
-      const cx = cW / 2, cy = cH / 2
-      activePage.pan.x = cx - (cx - activePage.pan.x) * f
-      activePage.pan.y = cy - (cy - activePage.pan.y) * f
-      activePage.zoom *= f; scheduleRedraw()
+      zoomAtScreenPoint(f, cW / 2, cH / 2)
     }
 
     // ── TOUCH ─────────────────────────────────────────────────────────────────
     // Apple Pencil fires touch events too; Safari's Touch.touchType ('stylus' vs
     // 'direct') is what lets us tell it apart from a finger for palm rejection.
     let lastTouchPt = null, touchPainting = false
-    let pinchStartDist = 0, pinchStartZoom = 1, pinchImgPt = null
+    let pinchLastDist = 0, pinchLastMid = null
     const MAX_ZOOM = (isSafari || isIPad) ? 3.0 : 10.0
     const MIN_ZOOM = 0.1
 
@@ -747,9 +764,8 @@ export default function Canvas() {
         const t0 = e.touches[0], t1 = e.touches[1]
         const mx = ((t0.clientX + t1.clientX) / 2) - r.left
         const my = ((t0.clientY + t1.clientY) / 2) - r.top
-        pinchStartDist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY)
-        pinchStartZoom = activePage.zoom
-        pinchImgPt = s2i(mx, my)
+        pinchLastDist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY)
+        pinchLastMid = {x: mx, y: my}
         return
       }
       // Single touch, or a pencil touch (with a resting palm alongside it).
@@ -782,16 +798,23 @@ export default function Canvas() {
     function onTouchMove(e) {
       e.preventDefault(); if (!activePage) return
       const stylusTouch = findStylusTouch(e.touches)
-      if (e.touches.length === 2 && !stylusTouch && pinchStartDist) {
+      if (e.touches.length === 2 && !stylusTouch && pinchLastDist) {
         const r = drawEl.getBoundingClientRect()
         const t0 = e.touches[0], t1 = e.touches[1]
         const mx = ((t0.clientX + t1.clientX) / 2) - r.left
         const my = ((t0.clientY + t1.clientY) / 2) - r.top
         const dist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY)
-        const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, pinchStartZoom * (dist / pinchStartDist)))
-        activePage.zoom = newZoom
-        activePage.pan = {x: mx - pinchImgPt.x * newZoom, y: my - pinchImgPt.y * newZoom}
-        scheduleRedraw(); return
+        // Two-finger pan (midpoint translation) and pinch-zoom (anchored at
+        // the new midpoint), applied incrementally frame-to-frame — this
+        // composes correctly through zoomAtScreenPoint/panByScreenDelta
+        // whether they're driving activePage directly or OSD's viewport.
+        panByScreenDelta(mx - pinchLastMid.x, my - pinchLastMid.y)
+        const rawF = dist / pinchLastDist
+        const clampedZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, activePage.zoom * rawF))
+        zoomAtScreenPoint(clampedZoom / activePage.zoom, mx, my)
+        pinchLastDist = dist
+        pinchLastMid = {x: mx, y: my}
+        return
       }
       if (!touchPainting) return
       const pos = getTouchPos(e)
@@ -802,7 +825,7 @@ export default function Canvas() {
     function onTouchEnd(e) {
       e.preventDefault()
       touchPainting = false; lastTouchPt = null
-      pinchStartDist = 0; pinchImgPt = null
+      pinchLastDist = 0; pinchLastMid = null
       cancelAnimationFrame(rafId); rafId = 0
       redrawAll(); updateSF()
       if (checkHasLiveContent()) updateUnsaved(true)
