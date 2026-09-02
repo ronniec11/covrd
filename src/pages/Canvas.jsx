@@ -135,6 +135,7 @@ export default function Canvas() {
     let activePage     = null
     let osdViewer      = null
     let osdOverlayScale = 1
+    let lastDecodeInfo = ''
     let tool           = 'highlight'
     let brushSize      = 20
     let activeColor    = '#facc15'
@@ -1664,19 +1665,24 @@ export default function Canvas() {
       // ~1000 non-transparent pixels after resize). createImageBitmap's
       // resize option decodes straight to the target size, never
       // materializing the full-resolution intermediate.
+      lastDecodeInfo = `targetW=${targetW} targetH=${targetH} hasCreateImageBitmap=${typeof createImageBitmap === 'function'}`
       if (targetW && targetH && typeof createImageBitmap === 'function') {
         try {
           const res = await fetch(dataUrl)
           const blob = await res.blob()
+          lastDecodeInfo += ` blobSize=${blob.size} blobType=${blob.type}`
           const bitmap = await createImageBitmap(blob, {
             resizeWidth: targetW, resizeHeight: targetH, resizeQuality: 'high',
           })
+          lastDecodeInfo += ` bitmap=${bitmap.width}x${bitmap.height}`
           const c = document.createElement('canvas'); c.width = targetW; c.height = targetH
           const cCtx = c.getContext('2d')
           if (cCtx) cCtx.drawImage(bitmap, 0, 0)
           bitmap.close()
+          lastDecodeInfo += ' method=createImageBitmap-resize OK'
           return c
         } catch (e) {
+          lastDecodeInfo += ` method=createImageBitmap-resize FAILED: ${e.message || e}`
           console.warn('[Canvas] createImageBitmap resize decode failed, falling back:', e)
         }
       }
@@ -1689,8 +1695,10 @@ export default function Canvas() {
         const c = document.createElement('canvas'); c.width = img.width; c.height = img.height
         const cCtx = c.getContext('2d')
         if (cCtx && c.width > 0) cCtx.drawImage(img, 0, 0)
+        lastDecodeInfo += ` method=img-native-${c.width}x${c.height} OK`
         return c
       } catch (e) {
+        lastDecodeInfo += ` method=img-native FAILED: ${e.message || e}`
         console.warn('[Canvas] Failed to load canvas from data URL', e)
         return null
       }
@@ -1784,12 +1792,23 @@ export default function Canvas() {
         const srcType = dbSess.highlight_data ? (dbSess.highlight_data.startsWith('data:') ? 'data-url' : 'storage-url') : 'none'
         if (!hlCanvas || hlCanvas.width === 0) {
           console.warn('[Canvas] Skipping session with invalid hlCanvas:', dbSess.id)
-          debugLines.push(`"${dbSess.name || dbSess.id}" (${srcType}): FAILED TO LOAD — skipped entirely`)
+          debugLines.push(`"${dbSess.name || dbSess.id}" (${srcType}): FAILED TO LOAD — skipped entirely\n  decode: ${lastDecodeInfo}`)
           continue
         }
 
+        // Sample non-transparent pixels right after decode, before any
+        // resize — pins down whether content survived decode itself.
+        let decodedNonBlank = 'n/a'
+        try {
+          const sampleCtx = hlCanvas.getContext('2d')
+          const sampleData = sampleCtx.getImageData(0, 0, hlCanvas.width, hlCanvas.height).data
+          let count = 0
+          for (let i = 3; i < sampleData.length; i += 4) if (sampleData[i] > 10) count++
+          decodedNonBlank = `${count} / ${sampleData.length / 4}`
+        } catch (e) { decodedNonBlank = 'ERROR: ' + (e.message || e) }
+
         const img = activePage.image
-        debugLines.push(`"${dbSess.name || dbSess.id}" (${srcType}): loaded ${hlCanvas.width}x${hlCanvas.height}, target ${img.width}x${img.height}${hlCanvas.width !== img.width || hlCanvas.height !== img.height ? ' [RESIZING]' : ' [exact match]'}`)
+        debugLines.push(`"${dbSess.name || dbSess.id}" (${srcType}): loaded ${hlCanvas.width}x${hlCanvas.height}, target ${img.width}x${img.height}${hlCanvas.width !== img.width || hlCanvas.height !== img.height ? ' [RESIZING]' : ' [exact match]'}\n  decode: ${lastDecodeInfo}\n  post-decode non-blank px: ${decodedNonBlank}`)
         if (hlCanvas.width !== img.width || hlCanvas.height !== img.height) {
           const tmp = document.createElement('canvas')
           tmp.width = img.width; tmp.height = img.height
