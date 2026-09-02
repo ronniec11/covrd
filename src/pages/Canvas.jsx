@@ -1652,8 +1652,34 @@ export default function Canvas() {
     // Handles both legacy base64 data URLs and Storage public URLs (newer
     // sessions) — crossOrigin is a no-op for data: URLs and required for
     // reading storage URLs back into a canvas without tainting it.
-    async function loadCanvasFromDataUrl(dataUrl) {
+    async function loadCanvasFromDataUrl(dataUrl, targetW, targetH) {
       if (!dataUrl) return null
+      // Cross-device sessions: a source saved on desktop (uncapped flat-image
+      // resolution) can be far bigger than this device needs. Decoding it at
+      // native size first (a canvas potentially 80M+ pixels) then downscaling
+      // is exactly the oversized-canvas failure mode capped everywhere else
+      // in this file — on iOS Safari, drawImage at that scale can silently
+      // produce a near-empty result rather than an error (confirmed via
+      // on-device diagnostics: a loaded 10368x7776 source ended up with only
+      // ~1000 non-transparent pixels after resize). createImageBitmap's
+      // resize option decodes straight to the target size, never
+      // materializing the full-resolution intermediate.
+      if (targetW && targetH && typeof createImageBitmap === 'function') {
+        try {
+          const res = await fetch(dataUrl)
+          const blob = await res.blob()
+          const bitmap = await createImageBitmap(blob, {
+            resizeWidth: targetW, resizeHeight: targetH, resizeQuality: 'high',
+          })
+          const c = document.createElement('canvas'); c.width = targetW; c.height = targetH
+          const cCtx = c.getContext('2d')
+          if (cCtx) cCtx.drawImage(bitmap, 0, 0)
+          bitmap.close()
+          return c
+        } catch (e) {
+          console.warn('[Canvas] createImageBitmap resize decode failed, falling back:', e)
+        }
+      }
       try {
         const img = new Image()
         img.crossOrigin = 'anonymous'
@@ -1710,7 +1736,7 @@ export default function Canvas() {
 
         if (dbSess.highlight_data) {
           console.log('[Canvas] Loading session markup from:', dbSess.highlight_data.substring(0, 50))
-          hlCanvas = await loadCanvasFromDataUrl(dbSess.highlight_data)
+          hlCanvas = await loadCanvasFromDataUrl(dbSess.highlight_data, activePage.image.width, activePage.image.height)
           console.log('[Canvas] hlCanvas result:', hlCanvas?.width, 'x', hlCanvas?.height,
             'activePage image:', activePage.image?.width, 'x', activePage.image?.height)
           // Legacy sessions stored highlight_data as a base64 data: URL (new
@@ -1723,13 +1749,25 @@ export default function Canvas() {
             try {
               const res = await fetch(dbSess.highlight_data)
               const blob = await res.blob()
-              blobUrl = URL.createObjectURL(blob)
-              const img = new Image()
-              await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = blobUrl })
-              const c = document.createElement('canvas'); c.width = img.width; c.height = img.height
-              const cCtx = c.getContext('2d')
-              if (cCtx && c.width > 0) cCtx.drawImage(img, 0, 0)
-              hlCanvas = c
+              const tw = activePage.image.width, th = activePage.image.height
+              // Same oversized-canvas risk as the primary path — decode
+              // straight to target size when possible, native size otherwise.
+              if (typeof createImageBitmap === 'function') {
+                const bitmap = await createImageBitmap(blob, { resizeWidth: tw, resizeHeight: th, resizeQuality: 'high' })
+                const c = document.createElement('canvas'); c.width = tw; c.height = th
+                const cCtx = c.getContext('2d')
+                if (cCtx) cCtx.drawImage(bitmap, 0, 0)
+                bitmap.close()
+                hlCanvas = c
+              } else {
+                blobUrl = URL.createObjectURL(blob)
+                const img = new Image()
+                await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = blobUrl })
+                const c = document.createElement('canvas'); c.width = img.width; c.height = img.height
+                const cCtx = c.getContext('2d')
+                if (cCtx && c.width > 0) cCtx.drawImage(img, 0, 0)
+                hlCanvas = c
+              }
               console.log('[Canvas] Blob fallback succeeded:', hlCanvas.width, 'x', hlCanvas.height)
             } catch (e) {
               console.warn('[Canvas] Blob fallback also failed:', e)
@@ -1739,7 +1777,7 @@ export default function Canvas() {
           }
         }
         if (dbSess.pen_data) {
-          penCanvas = await loadCanvasFromDataUrl(dbSess.pen_data)
+          penCanvas = await loadCanvasFromDataUrl(dbSess.pen_data, activePage.image.width, activePage.image.height)
         }
 
         console.log('[Canvas] Loaded session', dbSess.id, 'hlCanvas:', hlCanvas?.width, 'x', hlCanvas?.height)
@@ -1850,9 +1888,10 @@ export default function Canvas() {
           if (!data) return
           let hlCanvas = null, penCanvas = null
           if (data.type === 'canvas_v3') {
+            const tw = activePage?.image.width, th = activePage?.image.height
             ;[hlCanvas, penCanvas] = await Promise.all([
-              loadCanvasFromDataUrl(data.highlight_data),
-              loadCanvasFromDataUrl(data.pen_data),
+              loadCanvasFromDataUrl(data.highlight_data, tw, th),
+              loadCanvasFromDataUrl(data.pen_data, tw, th),
             ])
           } else if (data.type === 'canvas_v2') {
             ;[hlCanvas, penCanvas] = await Promise.all([
