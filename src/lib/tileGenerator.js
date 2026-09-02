@@ -28,6 +28,15 @@ function pyramidLevels(fullW, fullH) {
   return { maxLevel, minLevel }
 }
 
+// Races `promise` against a timeout so a hung fetch/render can never stall
+// generation forever — throws instead, so it surfaces as a visible error.
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)),
+  ])
+}
+
 // Runs `tasks` (array of functions returning promises) with bounded parallelism.
 async function runPool(tasks, concurrency, onEach) {
   let next = 0
@@ -45,10 +54,14 @@ async function runPool(tasks, concurrency, onEach) {
 
 async function uploadTile(pathPrefix, level, col, row, blob, format) {
   const path = `${pathPrefix}/${level}/${col}_${row}.${format}`
-  const { error } = await supabase.storage.from(BUCKET).upload(path, blob, {
-    upsert: true,
-    contentType: format === 'jpeg' ? 'image/jpeg' : 'image/png',
-  })
+  const { error } = await withTimeout(
+    supabase.storage.from(BUCKET).upload(path, blob, {
+      upsert: true,
+      contentType: format === 'jpeg' ? 'image/jpeg' : 'image/png',
+    }),
+    20000,
+    `Upload of ${path}`,
+  )
   if (error) throw error
 }
 
@@ -126,18 +139,26 @@ export async function generatePdfTiles(pdfUrl, { projectId, pageId, format = 'pn
         const chunkX = cc * CHUNK, chunkY = cr * CHUNK
         const cw = Math.min(CHUNK, lw - chunkX)
         const ch = Math.min(CHUNK, lh - chunkY)
+        const chunkIndex = chunkCount
         chunkCount++
         jobs.push(async () => {
+          const t0 = performance.now()
           const chunkCanvas = document.createElement('canvas')
           chunkCanvas.width = cw; chunkCanvas.height = ch
-          await page.render({
-            canvasContext: chunkCanvas.getContext('2d'),
-            viewport: levelViewport,
-            transform: [1, 0, 0, 1, -chunkX, -chunkY],
-          }).promise
+          await withTimeout(
+            page.render({
+              canvasContext: chunkCanvas.getContext('2d'),
+              viewport: levelViewport,
+              transform: [1, 0, 0, 1, -chunkX, -chunkY],
+            }).promise,
+            30000,
+            `Render of level ${level} chunk ${chunkIndex}`,
+          )
+          console.log('[tileGenerator] chunk', chunkIndex, 'level', level, 'rendered in', Math.round(performance.now() - t0), 'ms — uploading tiles...')
           const tileJobs = []
           queueTileSlices(tileJobs, chunkCanvas, chunkX, chunkY, lw, lh, pathPrefix, level, format)
           await runPool(tileJobs, 6)
+          console.log('[tileGenerator] chunk', chunkIndex, 'level', level, 'fully done in', Math.round(performance.now() - t0), 'ms (', tileJobs.length, 'tiles )')
         })
       }
     }
