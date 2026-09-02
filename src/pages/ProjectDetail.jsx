@@ -306,6 +306,11 @@ export default function ProjectDetail() {
     if (!page.floor_plan_url) { alert('This page has no floor plan file to tile.'); return }
     setTilingPageId(page.id); setTilingProgress(0)
     try {
+      if (page.tile_meta) {
+        // Regenerating — clear out any stale/partial tiles from a previous
+        // attempt (e.g. a different pyramid depth) before writing new ones.
+        await deleteTiles(projectId, page.id)
+      }
       let url = page.floor_plan_url
       if (!url.startsWith('http')) {
         const { data } = supabase.storage.from('floor-plans').getPublicUrl(url)
