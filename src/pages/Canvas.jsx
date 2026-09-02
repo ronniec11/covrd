@@ -134,6 +134,7 @@ export default function Canvas() {
     let pages          = []
     let activePage     = null
     let osdViewer      = null
+    let osdOverlayScale = 1
     let tool           = 'highlight'
     let brushSize      = 20
     let activeColor    = '#facc15'
@@ -287,6 +288,10 @@ export default function Canvas() {
     // s2i(), calibration, and SF math need no changes at all.
     function teardownOsdViewer() {
       if (osdViewer) { osdViewer.destroy(); osdViewer = null }
+      // osdOverlayScale is only ever read from the update-viewport handler,
+      // which only fires while osdViewer is set — no need to reset it here,
+      // and doing so would race with init() setting it just before this runs
+      // (called from setupOsdViewer, which runs after osdOverlayScale is set).
       osdContainerEl.style.display = 'none'
       planEl.style.display = 'block'
     }
@@ -315,8 +320,21 @@ export default function Canvas() {
         if (!activePage) return
         const tiledImage = osdViewer.world.getItemAt(0)
         if (!tiledImage) return
-        activePage.zoom = tiledImage.viewportToImageZoom(osdViewer.viewport.getZoom(true))
-        activePage.pan = tiledImage.imageToViewerElementCoordinates(new OpenSeadragon.Point(0, 0))
+        // viewportToImageZoom is in tile_meta's full (uncapped) pixel space;
+        // divide by osdOverlayScale to convert into the smaller space
+        // activePage.image/liveHlCanvas/etc. actually use (see setupOsdViewer
+        // caller in init()) — a capped-space pixel covers more physical area
+        // than a full-res one, so it takes proportionally more screen px per
+        // capped pixel to show the same true zoom level.
+        const newZoom = tiledImage.viewportToImageZoom(osdViewer.viewport.getZoom(true)) / osdOverlayScale
+        const newPan = tiledImage.imageToViewerElementCoordinates(new OpenSeadragon.Point(0, 0))
+        // OSD fires this on any world/tile activity, not just real navigation
+        // (e.g. tiles still loading in) — skip the (non-trivial) overlay
+        // redraw when nothing actually moved, so drawing isn't competing with
+        // spurious redraw work.
+        if (newZoom === activePage.zoom && newPan.x === activePage.pan.x && newPan.y === activePage.pan.y) return
+        activePage.zoom = newZoom
+        activePage.pan = newPan
         scheduleRedraw()
       })
     }
@@ -1911,8 +1929,21 @@ export default function Canvas() {
             if (pg.scale === 'custom' && customWrapRef.current) customWrapRef.current.style.display = 'flex'
           }
 
-          const placeholderImg = { width: pg.tile_meta.width, height: pg.tile_meta.height }
-          addPage(placeholderImg, pg.name, 72 * TILE_BASE_SCALE, pg.tile_meta)
+          // Critical: liveHlCanvas/livePenCanvas/sessionsHL etc. are all sized
+          // 1:1 to activePage.image, same as a non-tiled page — tile_meta's
+          // raw dimensions (generated at TILE_BASE_SCALE=4, uncapped) are far
+          // beyond iOS Safari's canvas area ceiling, the exact class of crash
+          // capped elsewhere in this file. Overlay canvases stay capped to
+          // OVERLAY_MAX_DIM regardless of the tile pyramid's own resolution —
+          // OSD_OVERLAY_SCALE below converts activePage.zoom into this
+          // smaller space so drawing/calibration coordinates stay correct.
+          const OVERLAY_MAX_DIM = 4096
+          osdOverlayScale = Math.min(1, OVERLAY_MAX_DIM / Math.max(pg.tile_meta.width, pg.tile_meta.height))
+          const placeholderImg = {
+            width: Math.round(pg.tile_meta.width * osdOverlayScale),
+            height: Math.round(pg.tile_meta.height * osdOverlayScale),
+          }
+          addPage(placeholderImg, pg.name, 72 * TILE_BASE_SCALE * osdOverlayScale, pg.tile_meta)
           setupOsdViewer(pg.tile_meta)
         } else {
         const isPdf = /\.pdf($|\?)/i.test(url) || url.toLowerCase().includes('.pdf')
