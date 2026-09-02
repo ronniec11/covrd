@@ -186,6 +186,7 @@ export default function Canvas() {
           console.warn('[Canvas] Session hlCanvas size mismatch vs page image:', s.id,
             s.hlCanvas.width + 'x' + s.hlCanvas.height, 'vs', img.width + 'x' + img.height)
         }
+        console.log('[Canvas] Drawing session to cache:', s.name, s.color, s.hlCanvas.width, 'x', s.hlCanvas.height)
         const tinted = tintCanvas(s.hlCanvas, s.color)
         if (!tinted) console.warn('[Canvas] tintCanvas returned null for session:', s.id)
         if (tinted) hlc.drawImage(tinted, 0, 0)
@@ -1601,6 +1602,15 @@ export default function Canvas() {
       }
 
       console.log('[Canvas] Sessions loaded:', activePage.sessions.length)
+      if (activePage.sessions.length > 0) {
+        const s = activePage.sessions[0]
+        console.log('[Canvas] First session color:', s.color, 'hlCanvas:', s.hlCanvas?.width, 'x', s.hlCanvas?.height)
+        if (s.hlCanvas) {
+          const testCtx = s.hlCanvas.getContext('2d')
+          const testData = testCtx?.getImageData(0, 0, Math.min(10, s.hlCanvas.width), Math.min(10, s.hlCanvas.height))
+          console.log('[Canvas] First 10x10 pixels have data:', testData?.data.some(v => v > 0))
+        }
+      }
       invalidateSessions()
       redrawAll(); renderSessions(); updateSF(); updateProgressBar(); saveDayToHistory()
     }
