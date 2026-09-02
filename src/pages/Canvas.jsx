@@ -1449,6 +1449,10 @@ export default function Canvas() {
               ? uploadCanvasToStorage(newPen, s.supabaseId, 'pen').then(url => url || newPen.toDataURL('image/png'))
               : null,
           ])
+          const count_data = s.countMarkers.length > 0
+            ? { w: activePage.image.width, h: activePage.image.height, markers: s.countMarkers }
+            : null
+          console.log('[Canvas] commitSessionEdit saving count_data:', JSON.stringify(count_data))
           const { error } = await supabase.from('sessions').upsert({
             id:             s.supabaseId,
             name:           s.name,
@@ -1456,9 +1460,7 @@ export default function Canvas() {
             sf:             s.sf,
             highlight_data,
             pen_data,
-            count_data:     s.countMarkers.length > 0
-              ? { w: activePage.image.width, h: activePage.image.height, markers: s.countMarkers }
-              : null,
+            count_data,
             updated_at:     new Date().toISOString(),
           })
           if (error) console.error('[Canvas] Failed to update session:', error)
@@ -1824,10 +1826,12 @@ export default function Canvas() {
         try {
           const raw = dbSess.count_data
           const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+          console.log('[Canvas] count_data raw for session', dbSess.id, dbSess.name, ':', JSON.stringify(parsed), 'this device img:', img.width, 'x', img.height)
           if (Array.isArray(parsed)) {
             // Legacy shape: bare marker array, no size reference was ever
             // saved — best effort, used as-is (matches pre-fix behavior).
             countMarkers = parsed
+            console.warn('[Canvas] count_data is legacy bare-array shape (no w/h) — markers used unscaled')
           } else if (parsed?.markers) {
             // {w, h, markers}: rescale from the saving device's image size
             // to this device's, same idea as the hlCanvas/penCanvas resize
@@ -1836,7 +1840,9 @@ export default function Canvas() {
             // one (and vice versa).
             const sx = parsed.w ? img.width / parsed.w : 1
             const sy = parsed.h ? img.height / parsed.h : 1
+            console.log('[Canvas] Rescaling', parsed.markers.length, 'markers: saved at', parsed.w, 'x', parsed.h, '-> scale', sx.toFixed(4), sy.toFixed(4))
             countMarkers = parsed.markers.map(m => ({ ...m, x: m.x * sx, y: m.y * sy }))
+            console.log('[Canvas] Rescaled marker coords:', JSON.stringify(countMarkers.map(m => ({x: Math.round(m.x), y: Math.round(m.y)}))))
           }
         } catch {}
 
