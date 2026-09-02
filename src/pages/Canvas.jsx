@@ -569,6 +569,11 @@ export default function Canvas() {
         drawEl.style.cursor = 'grabbing'; return
       }
       if (e.button === 0) {
+        // Isolating a session (tap its card) and then editing/adding to it is
+        // a common flow — the solo view renders a static snapshot, so leaving
+        // it active while painting/placing markers means nothing you draw
+        // shows up until it's cleared. Clear before either tool acts.
+        if (soloSession) { soloSession = null; renderSessions() }
         if (tool === 'count') {
           const hit = liveCountMarkers.findIndex(m => {
             const sx = m.x * activePage.zoom + activePage.pan.x
@@ -582,7 +587,6 @@ export default function Canvas() {
           }
           placeCountMarker(pos.x, pos.y); return
         }
-        if (soloSession) { soloSession = null; renderSessions() }
         isPainting = true; lastPenPt = null
         undoStack.push({
           hl:  liveHlCtx.getImageData(0, 0, liveHlCanvas.width, liveHlCanvas.height),
@@ -792,6 +796,9 @@ export default function Canvas() {
       // Single touch, or a pencil touch (with a resting palm alongside it).
       const pos = getTouchPos(e)
       if (calibrating) { handleCalibClick(pos.x, pos.y); return }
+      // See onDown — solo view is a static snapshot; leaving it active while
+      // drawing/placing markers hides everything you do until it's cleared.
+      if (soloSession) { soloSession = null; renderSessions() }
       if (tool === 'count') {
         const hit = liveCountMarkers.findIndex(m => {
           const sx = m.x * activePage.zoom + activePage.pan.x
@@ -1119,7 +1126,15 @@ export default function Canvas() {
           work_date:      session.date,
           highlight_data,
           pen_data,
-          count_data:     session.countMarkers?.length > 0 ? session.countMarkers : null,
+          // Markers are stored as raw image-space pixel coords with no
+          // embedded reference — unlike hlCanvas/penCanvas (a PNG's own
+          // width/height IS that reference), so bundle the image size they
+          // were captured against alongside them, or a device with a
+          // different activePage.image size (e.g. iPad's capped tiled
+          // resolution vs. desktop's full one) has no way to rescale them.
+          count_data:     session.countMarkers?.length > 0
+            ? { w: activePage.image.width, h: activePage.image.height, markers: session.countMarkers }
+            : null,
           updated_at:     new Date().toISOString(),
         }
 
@@ -1441,7 +1456,9 @@ export default function Canvas() {
             sf:             s.sf,
             highlight_data,
             pen_data,
-            count_data:     s.countMarkers.length > 0 ? s.countMarkers : null,
+            count_data:     s.countMarkers.length > 0
+              ? { w: activePage.image.width, h: activePage.image.height, markers: s.countMarkers }
+              : null,
             updated_at:     new Date().toISOString(),
           })
           if (error) console.error('[Canvas] Failed to update session:', error)
@@ -1806,7 +1823,21 @@ export default function Canvas() {
         let countMarkers = []
         try {
           const raw = dbSess.count_data
-          if (raw) countMarkers = typeof raw === 'string' ? JSON.parse(raw) : raw
+          const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+          if (Array.isArray(parsed)) {
+            // Legacy shape: bare marker array, no size reference was ever
+            // saved — best effort, used as-is (matches pre-fix behavior).
+            countMarkers = parsed
+          } else if (parsed?.markers) {
+            // {w, h, markers}: rescale from the saving device's image size
+            // to this device's, same idea as the hlCanvas/penCanvas resize
+            // just above — otherwise a marker placed on iPad's capped tiled
+            // resolution lands nowhere near the right spot on desktop's full
+            // one (and vice versa).
+            const sx = parsed.w ? img.width / parsed.w : 1
+            const sy = parsed.h ? img.height / parsed.h : 1
+            countMarkers = parsed.markers.map(m => ({ ...m, x: m.x * sx, y: m.y * sy }))
+          }
         } catch {}
 
         const date = dbSess.work_date || getCurrentDate()
