@@ -143,15 +143,23 @@ export async function generatePdfTiles(pdfUrl, { projectId, pageId, format = 'pn
         chunkCount++
         jobs.push(async () => {
           const t0 = performance.now()
+          if (chunkIndex === 0) console.log('[tileGenerator] Rendering chunk 0 (level', level, ') — first render on this page, can take a while to parse...')
           const chunkCanvas = document.createElement('canvas')
           chunkCanvas.width = cw; chunkCanvas.height = ch
+          // The very first render() call on a page is the expensive one — it's
+          // what parses and caches the page's whole operator list; every
+          // later render (any level/chunk) reuses that cache and is much
+          // faster. 30s wasn't enough for a genuinely complex real-world
+          // drawing's first pass even with concurrency already ruled out as
+          // the cause — 120s gives that cold start real room without letting
+          // a truly hung render block generation forever.
           await withTimeout(
             page.render({
               canvasContext: chunkCanvas.getContext('2d'),
               viewport: levelViewport,
               transform: [1, 0, 0, 1, -chunkX, -chunkY],
             }).promise,
-            30000,
+            120000,
             `Render of level ${level} chunk ${chunkIndex}`,
           )
           console.log('[tileGenerator] chunk', chunkIndex, 'level', level, 'rendered in', Math.round(performance.now() - t0), 'ms — uploading tiles...')
