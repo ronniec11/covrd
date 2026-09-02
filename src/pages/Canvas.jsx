@@ -1586,7 +1586,34 @@ export default function Canvas() {
         let hlCanvas = null, penCanvas = null
 
         if (dbSess.highlight_data) {
+          console.log('[Canvas] Loading session markup from:', dbSess.highlight_data.substring(0, 50))
           hlCanvas = await loadCanvasFromDataUrl(dbSess.highlight_data)
+          console.log('[Canvas] hlCanvas result:', hlCanvas?.width, 'x', hlCanvas?.height,
+            'activePage image:', activePage.image?.width, 'x', activePage.image?.height)
+          // Legacy sessions stored highlight_data as a base64 data: URL (new
+          // sessions upload to Storage instead — see uploadCanvasToStorage).
+          // If <img src="data:..."> silently fails to decode on iPad Safari,
+          // retry via fetch()+blob, which goes through a different decode path.
+          if (!hlCanvas && dbSess.highlight_data.startsWith('data:')) {
+            console.warn('[Canvas] Data URL load failed, trying blob approach')
+            let blobUrl = null
+            try {
+              const res = await fetch(dbSess.highlight_data)
+              const blob = await res.blob()
+              blobUrl = URL.createObjectURL(blob)
+              const img = new Image()
+              await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = blobUrl })
+              const c = document.createElement('canvas'); c.width = img.width; c.height = img.height
+              const cCtx = c.getContext('2d')
+              if (cCtx && c.width > 0) cCtx.drawImage(img, 0, 0)
+              hlCanvas = c
+              console.log('[Canvas] Blob fallback succeeded:', hlCanvas.width, 'x', hlCanvas.height)
+            } catch (e) {
+              console.warn('[Canvas] Blob fallback also failed:', e)
+            } finally {
+              if (blobUrl) URL.revokeObjectURL(blobUrl)
+            }
+          }
         }
         if (dbSess.pen_data) {
           penCanvas = await loadCanvasFromDataUrl(dbSess.pen_data)
@@ -1782,7 +1809,7 @@ export default function Canvas() {
           ppi = pg.ppi || 72 * Math.max(3.0, DPR * 1.5)
         } else if (isPdf) {
           uzShow('', 'Loading floor plan…', 'Rendering PDF…')
-          const RENDER_SCALE = isIPad ? Math.min(2.0, DPR * 1.0) : Math.max(3.0, DPR * 1.5)
+          const RENDER_SCALE = (isIPad || isSafari) ? Math.min(1.5, DPR) : Math.max(3.0, DPR * 1.5)
           const pdfjsLib = await import('pdfjs-dist')
           const { default: pdfWorkerUrl } = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
           pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
@@ -1809,7 +1836,7 @@ export default function Canvas() {
         // sized 1:1 to this image, so keeping it small here is what actually
         // keeps drawing and session compositing from crashing the tab.
         if (isIPad || isSafari) {
-          const MAX_DIM = 2048
+          const MAX_DIM = 4096
           if (img.width > MAX_DIM || img.height > MAX_DIM) {
             const scale = MAX_DIM / Math.max(img.width, img.height)
             const scaled = document.createElement('canvas')
