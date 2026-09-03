@@ -9,7 +9,8 @@ import './Canvas.css'
 // NOTE: Run this migration in Supabase SQL editor before using count tool:
 // ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS count_data jsonb DEFAULT '[]';
 //
-// NOTE: Run this migration to enable crew size / hours worked on session edit
+// NOTE: Run this migration to enable crew size / hours worked, asked for in
+// the Save Session dialog and editable later via the session edit modal
 // (used by the production tracking report — see src/pages/Reports.jsx):
 // ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS crew_size integer;
 // ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS hours_worked numeric;
@@ -95,6 +96,11 @@ export default function Canvas() {
   const editCountRef     = useRef(null)
   const editCrewRef      = useRef(null)
   const editHoursRef     = useRef(null)
+  // save session modal
+  const saveModalRef     = useRef(null)
+  const saveNameRef      = useRef(null)
+  const saveCrewRef      = useRef(null)
+  const saveHoursRef     = useRef(null)
   // history modal
   const histModalRef     = useRef(null)
   const calMonthLblRef   = useRef(null)
@@ -1211,7 +1217,7 @@ export default function Canvas() {
     }
 
     // ── SESSIONS ─────────────────────────────────────────────────────────────
-    async function saveSession() {
+    function saveSession() {
       if (!activePage) { showToast('No floor plan loaded', true); return }
       if (activeRect) bakeActiveRect()
       ensureLive()
@@ -1223,12 +1229,31 @@ export default function Canvas() {
       if (!hasHL && !hasPen && liveCountMarkers.length === 0) {
         showToast('Nothing to save — paint first!', true); return
       }
+      openSaveModal()
+    }
 
-      // Use profile name as default; fall back to auth email prefix
+    function openSaveModal() {
       const userName = userProfile?.full_name || user.email?.split('@')[0] || 'Session'
-      const name = prompt('Session name (optional — press Enter to use your name):', userName)
-      if (name === null) return  // user cancelled
-      const sessionName = (name && name.trim()) ? name.trim() : userName
+      if (saveNameRef.current)  saveNameRef.current.value  = userName
+      if (saveCrewRef.current)  saveCrewRef.current.value  = ''
+      if (saveHoursRef.current) saveHoursRef.current.value = ''
+      if (saveModalRef.current) saveModalRef.current.classList.add('open')
+      setTimeout(() => saveNameRef.current?.focus(), 0)
+    }
+
+    function closeSaveModal() {
+      if (saveModalRef.current) saveModalRef.current.classList.remove('open')
+    }
+
+    async function confirmSaveSession() {
+      const userName = userProfile?.full_name || user.email?.split('@')[0] || 'Session'
+      const nameRaw = saveNameRef.current?.value?.trim()
+      const sessionName = nameRaw || userName
+      const crewRaw  = saveCrewRef.current?.value
+      const hoursRaw = saveHoursRef.current?.value
+      const crewSize    = crewRaw  ? parseInt(crewRaw, 10)   : null
+      const hoursWorked = hoursRaw ? parseFloat(hoursRaw)    : null
+      closeSaveModal()
 
       const sf   = toSF(countPx(liveHlCanvas))
       const countTotal = liveCountMarkers.length
@@ -1256,6 +1281,7 @@ export default function Canvas() {
         sf, count: countTotal, date, time,
         hlCanvas: snapHL, penCanvas: snapPen,
         countMarkers: snapCount,
+        crewSize, hoursWorked,
         pageId: activePage.id, pageName: activePage.name,
       }
       activePage.sessions.push(session)
@@ -1334,10 +1360,23 @@ export default function Canvas() {
           count_data:     session.countMarkers?.length > 0
             ? { w: activePage.image.width, h: activePage.image.height, markers: session.countMarkers }
             : null,
+          crew_size:      session.crewSize ?? null,
+          hours_worked:   session.hoursWorked ?? null,
           updated_at:     new Date().toISOString(),
         }
 
-        const { error } = await supabase.from('sessions').insert(insertPayload)
+        let { error } = await supabase.from('sessions').insert(insertPayload)
+        if (error && /crew_size|hours_worked/.test(error.message)) {
+          // Pre-migration DB — retry without the not-yet-existing columns so
+          // the session still saves (see the ALTER TABLE note at the top of
+          // this file), loudly telling the user their crew/hours were dropped.
+          console.warn('[Canvas] crew_size/hours_worked columns missing on insert, retrying without them.')
+          const { crew_size, hours_worked, ...rest } = insertPayload
+          ;({ error } = await supabase.from('sessions').insert(rest))
+          if (!error && (session.crewSize != null || session.hoursWorked != null)) {
+            alert('Session saved, but Crew Size / Hours Worked were NOT saved — the database is missing those columns. Run the migration noted at the top of Canvas.jsx (crew_size/hours_worked ALTER TABLE) in the Supabase SQL editor, then re-enter them via the session\'s edit (pencil) button.')
+          }
+        }
         if (error) throw error
         console.log('[Canvas] Session saved to Supabase')
         return true
@@ -2468,6 +2507,7 @@ export default function Canvas() {
     })
     if (editModalRef.current) editModalRef.current.addEventListener('click', e => { if (e.target === editModalRef.current) closeEditModal() })
     if (histModalRef.current) histModalRef.current.addEventListener('click', e => { if (e.target === histModalRef.current) closeHistory() })
+    if (saveModalRef.current) saveModalRef.current.addEventListener('click', e => { if (e.target === saveModalRef.current) closeSaveModal() })
 
     api.current = {
       setTool, startCalib, cancelCalib,
@@ -2475,6 +2515,7 @@ export default function Canvas() {
       openHistory, closeHistory, calPrevMonth, calNextMonth,
       closeEditModal, saveEdit, startPaintEdit, startCountEdit,
       cancelSessionEdit, commitSessionEdit,
+      closeSaveModal, confirmSaveSession,
       ctxSetTool,
     }
 
@@ -2717,6 +2758,29 @@ export default function Canvas() {
             <div className="ct-modal-btn" onClick={() => api.current.closeEditModal?.()}>Cancel</div>
             <div className="ct-modal-btn paint" onClick={() => api.current.startPaintEdit?.()}>+ Paint More</div>
             <div className="ct-modal-btn save" onClick={() => api.current.saveEdit?.()}>Save Changes</div>
+          </div>
+        </div>
+      </div>
+
+      <div ref={saveModalRef} className="ct-modal-overlay">
+        <div className="ct-modal-box">
+          <div className="ct-modal-title">Save Session</div>
+          <div className="ct-modal-field">
+            <label className="ct-modal-lbl">Session Name</label>
+            <input ref={saveNameRef} className="ct-modal-input" type="text" placeholder="e.g. Zone A – Morning"
+              onKeyDown={e => { if (e.key === 'Enter') api.current.confirmSaveSession?.() }} />
+          </div>
+          <div className="ct-modal-field">
+            <label className="ct-modal-lbl">Crew Size (optional)</label>
+            <input ref={saveCrewRef} className="ct-modal-input" type="number" min="0" step="1" placeholder="e.g. 3" />
+          </div>
+          <div className="ct-modal-field">
+            <label className="ct-modal-lbl">Hours Worked (optional)</label>
+            <input ref={saveHoursRef} className="ct-modal-input" type="number" min="0" step="0.25" placeholder="e.g. 4.5" />
+          </div>
+          <div className="ct-modal-row">
+            <div className="ct-modal-btn" onClick={() => api.current.closeSaveModal?.()}>Cancel</div>
+            <div className="ct-modal-btn save" onClick={() => api.current.confirmSaveSession?.()}>Save Session</div>
           </div>
         </div>
       </div>

@@ -196,8 +196,8 @@ ALTER PUBLICATION supabase_realtime ADD TABLE sessions;
 -- not sf_calculated/date). Add crew_size/hours_worked the same way:
 --   ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS crew_size integer;
 --   ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS hours_worked numeric;
--- Both optional/nullable, no default — set only via the session edit modal
--- in Canvas.jsx, not at initial session creation.
+-- Both optional/nullable, no default — asked for in the Save Session dialog
+-- in Canvas.jsx, and editable afterward via the session edit modal.
 
 -- ============================================
 -- STORAGE — floor-plans bucket
