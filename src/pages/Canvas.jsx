@@ -1374,11 +1374,19 @@ export default function Canvas() {
         console.log('[Canvas] Updating session in Supabase:', s.supabaseId, s.name)
         const payload = { name: s.name, color: s.color, sf: s.sf, crew_size: s.crewSize, hours_worked: s.hoursWorked }
         let { error } = await supabase.from('sessions').update(payload).eq('id', s.supabaseId)
+        let crewHoursDropped = false
         if (error && /crew_size|hours_worked/.test(error.message)) {
           // Pre-migration DB — retry without the not-yet-existing columns.
+          // This "succeeds" (name/color/sf still save) but silently drops
+          // crew/hours, which looked like data loss before this alert existed
+          // — loud on purpose so it's never mistaken for a real save.
           console.warn('[Canvas] crew_size/hours_worked columns missing, retrying without them — run the migration noted at the top of this file.')
+          crewHoursDropped = true
           const { crew_size, hours_worked, ...rest } = payload
           ;({ error } = await supabase.from('sessions').update(rest).eq('id', s.supabaseId))
+        }
+        if (!error && crewHoursDropped) {
+          alert('Session saved, but Crew Size / Hours Worked were NOT saved — the database is missing those columns. Run the migration noted at the top of Canvas.jsx (crew_size/hours_worked ALTER TABLE) in the Supabase SQL editor, then re-enter them.')
         }
         if (error) {
           console.error('[Canvas] saveEdit update failed:', error)

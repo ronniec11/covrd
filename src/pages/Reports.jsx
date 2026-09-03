@@ -68,6 +68,7 @@ export default function Reports() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [hasRun, setHasRun] = useState(false)
+  const [migrationMissing, setMigrationMissing] = useState(false)
 
   useEffect(() => {
     if (!canView) return
@@ -103,12 +104,15 @@ export default function Reports() {
       }
 
       let { data, error: sessErr } = await buildQuery(FULL_COLUMNS)
+      let missingMigration = false
       if (sessErr && /crew_size|hours_worked/.test(sessErr.message)) {
         // Pre-migration DB — retry without the not-yet-existing columns.
         console.warn('[Reports] crew_size/hours_worked columns not found, retrying without them — run the migration noted in Canvas.jsx / supabase-schema.sql.')
+        missingMigration = true
         ;({ data, error: sessErr } = await buildQuery(FALLBACK_COLUMNS))
       }
       if (sessErr) throw sessErr
+      setMigrationMissing(missingMigration)
       setRows((data || []).map(shapeRow))
       setHasRun(true)
     } catch (err) {
@@ -182,6 +186,12 @@ export default function Reports() {
         {!error && hasRun && rows.length === 0 && (
           <div className="text-center py-16">
             <p className="text-gray-400 font-medium">No sessions found for this range.</p>
+          </div>
+        )}
+
+        {!error && hasRun && migrationMissing && (
+          <div className="mb-4 px-4 py-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-sm text-yellow-200">
+            Crew Size / Hours Worked columns don't exist in the database yet, so those two fields are blank below for every row. Run the migration noted in Canvas.jsx / supabase-schema.sql (ALTER TABLE ... crew_size / hours_worked) in the Supabase SQL editor, then run this report again.
           </div>
         )}
 
