@@ -1691,9 +1691,11 @@ export default function Canvas() {
       // picked here is what the live preview shows before that happens).
       if (s.color) pickColor(s.color)
       // Auto-select tool: count if forced or the session is count-only; pen
-      // if it's pen-only; otherwise highlight (a baked rectangle and a
-      // freehand highlight stroke are the same pixels once saved, so
-      // highlight covers both — the Rectangle tool is still one click away).
+      // if it's pen-only; otherwise rect — the app's default tool for area
+      // work. A baked rectangle and a freehand highlight stroke are the same
+      // pixels once saved, so there's no way to tell which one originally
+      // made an SF-bearing session; defaulting to rect (rather than
+      // highlight) matches how it's used everywhere else in the app.
       const hasHL  = canvasHasPixels(liveHlCanvas, liveHlCtx)
       const hasPen = canvasHasPixels(livePenCanvas, livePenCtx)
       if (forceCountTool || (!hasHL && !hasPen && liveCountMarkers.length > 0)) {
@@ -1701,7 +1703,7 @@ export default function Canvas() {
       } else if (hasPen && !hasHL) {
         setTool('pen')
       } else {
-        setTool('highlight')
+        setTool('rect')
       }
       if (editBannerRef.current) editBannerRef.current.classList.add('show')
       if (editBannerTxtRef.current) editBannerTxtRef.current.textContent = 'Editing: ' + s.name + ' — paint to add more, then tap Update'
