@@ -1453,8 +1453,16 @@ export default function Canvas() {
             ? { w: activePage.image.width, h: activePage.image.height, markers: s.countMarkers }
             : null
           console.log('[Canvas] commitSessionEdit saving count_data:', JSON.stringify(count_data))
-          const { error } = await supabase.from('sessions').upsert({
-            id:             s.supabaseId,
+          // update, not upsert — this always targets an existing row
+          // (guarded by s.supabaseId above), and upsert() is implemented as
+          // INSERT ... ON CONFLICT DO UPDATE, which also evaluates the
+          // INSERT-path RLS policy (auth.uid() = user_id) against the
+          // attempted row. user_id was never included in this payload, so
+          // that check saw it as NULL and rejected every edit save with
+          // "new row violates row-level security policy" — a plain update()
+          // only evaluates the UPDATE policy against the row already in the
+          // table, which is what we actually want here.
+          const { error } = await supabase.from('sessions').update({
             name:           s.name,
             color:          s.color,
             sf:             s.sf,
@@ -1462,7 +1470,7 @@ export default function Canvas() {
             pen_data,
             count_data,
             updated_at:     new Date().toISOString(),
-          })
+          }).eq('id', s.supabaseId)
           if (error) {
             console.error('[Canvas] Failed to update session:', error)
             // upsert failing here (e.g. the "update your own sessions only"
