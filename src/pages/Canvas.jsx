@@ -1380,7 +1380,12 @@ export default function Canvas() {
           const { crew_size, hours_worked, ...rest } = payload
           ;({ error } = await supabase.from('sessions').update(rest).eq('id', s.supabaseId))
         }
-        if (error) console.error('[Canvas] saveEdit update failed:', error)
+        if (error) {
+          console.error('[Canvas] saveEdit update failed:', error)
+          alert('Failed to save session edit: ' + (error.message || JSON.stringify(error)))
+        } else {
+          showToast('Session updated!')
+        }
       }
     }
 
