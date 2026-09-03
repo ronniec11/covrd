@@ -57,7 +57,7 @@ function StatusBadge({ status, onSave, className = '' }) {
 
 function CreateProjectModal({ onClose, onCreated }) {
   const { user } = useAuth()
-  const [form, setForm] = useState({ name: '', description: '', address: '', status: 'active', daily_sf_target: '' })
+  const [form, setForm] = useState({ name: '', description: '', address: '', status: 'active', daily_sf_target: '', total_sf_target: '', cost: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -76,6 +76,8 @@ function CreateProjectModal({ onClose, onCreated }) {
           address: form.address.trim() || null,
           status: form.status,
           daily_sf_target: parseFloat(form.daily_sf_target) || 0,
+          total_sf_target: parseFloat(form.total_sf_target) || 0,
+          cost: form.cost === '' ? null : parseFloat(form.cost) || null,
           created_by: user.id,
         })
         .select()
@@ -137,6 +139,16 @@ function CreateProjectModal({ onClose, onCreated }) {
               <input className="input" type="number" min="0" value={form.daily_sf_target} onChange={e => set('daily_sf_target', e.target.value)} placeholder="5000" />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Total SF Target</label>
+              <input className="input" type="number" min="0" value={form.total_sf_target} onChange={e => set('total_sf_target', e.target.value)} placeholder="e.g. 250000" />
+            </div>
+            <div>
+              <label className="label">Contract Cost ($)</label>
+              <input className="input" type="number" min="0" value={form.cost} onChange={e => set('cost', e.target.value)} placeholder="e.g. 500000" />
+            </div>
+          </div>
 
           {error && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-red-400 text-sm">{error}</div>
@@ -160,14 +172,14 @@ const PencilIcon = () => (
   </svg>
 )
 
-function InlineTargetEdit({ label, value, onSave, canManage, colorClass = 'text-gray-200' }) {
+function InlineTargetEdit({ label, value, onSave, canManage, colorClass = 'text-gray-200', prefix = '', suffix = 'SF', allowNull = false }) {
   const [editing, setEditing] = useState(false)
   const [input, setInput] = useState(value ?? '')
   const [saving, setSaving] = useState(false)
 
   async function commit() {
     setSaving(true)
-    await onSave(parseFloat(input) || 0)
+    await onSave(allowNull && input === '' ? null : (parseFloat(input) || 0))
     setSaving(false)
     setEditing(false)
   }
@@ -193,7 +205,7 @@ function InlineTargetEdit({ label, value, onSave, canManage, colorClass = 'text-
   return (
     <div className="flex items-center gap-1 group/target">
       <p className={`text-sm font-semibold ${colorClass}`}>
-        {value ? value.toLocaleString() : '—'} <span className="text-xs font-normal text-muted">SF</span>
+        {value ? `${prefix}${value.toLocaleString()}` : '—'} {suffix && <span className="text-xs font-normal text-muted">{suffix}</span>}
       </p>
       {canManage && (
         <button
@@ -205,6 +217,12 @@ function InlineTargetEdit({ label, value, onSave, canManage, colorClass = 'text-
       )}
     </div>
   )
+}
+
+// cost / total_sf_target, formatted as a $/SF rate — '—' when either is missing.
+function formatRatePerSF(cost, totalSfTarget) {
+  if (!cost || !totalSfTarget) return '—'
+  return `$${(cost / totalSfTarget).toFixed(2)}/SF`
 }
 
 function ProjectCard({ project, todaySF, allTimeSF, onClick, onRename, onUpdateProject, canManage }) {
@@ -253,6 +271,11 @@ function ProjectCard({ project, todaySF, allTimeSF, onClick, onRename, onUpdateP
   async function saveTotalTarget(val) {
     await supabase.from('projects').update({ total_sf_target: val }).eq('id', project.id)
     onUpdateProject(project.id, { total_sf_target: val })
+  }
+
+  async function saveCost(val) {
+    await supabase.from('projects').update({ cost: val }).eq('id', project.id)
+    onUpdateProject(project.id, { cost: val })
   }
 
   return (
@@ -352,6 +375,22 @@ function ProjectCard({ project, todaySF, allTimeSF, onClick, onRename, onUpdateP
           <p className="text-sm font-semibold text-gray-200">
             {allTimeSF.toLocaleString(undefined, { maximumFractionDigits: 0 })} <span className="text-xs font-normal text-muted">SF</span>
           </p>
+        </div>
+        <div className="bg-surface-2 rounded-lg p-2.5">
+          <p className="text-xs text-muted mb-0.5">Contract Cost</p>
+          <InlineTargetEdit
+            value={project.cost}
+            onSave={saveCost}
+            canManage={canManage}
+            colorClass="text-green-300"
+            prefix="$"
+            suffix=""
+            allowNull
+          />
+        </div>
+        <div className="bg-surface-2 rounded-lg p-2.5">
+          <p className="text-xs text-muted mb-0.5">Target $/SF</p>
+          <p className="text-sm font-semibold text-gray-200">{formatRatePerSF(project.cost, project.total_sf_target)}</p>
         </div>
       </div>
 

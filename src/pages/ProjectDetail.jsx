@@ -289,6 +289,9 @@ export default function ProjectDetail() {
   const [editingTotalTarget, setEditingTotalTarget] = useState(false)
   const [totalTargetInput, setTotalTargetInput] = useState('')
   const [savingTotalTarget, setSavingTotalTarget] = useState(false)
+  const [editingCost, setEditingCost] = useState(false)
+  const [costInput, setCostInput] = useState('')
+  const [savingCost, setSavingCost] = useState(false)
   const [sessionsRefreshing, setSessionsRefreshing] = useState(false)
   const [editingPageId, setEditingPageId] = useState(null)
   const [editingPageName, setEditingPageName] = useState('')
@@ -429,6 +432,7 @@ export default function ProjectDetail() {
       setMembers((mems || []).map(m => m.profiles))
       setTargetInput(proj?.daily_sf_target || 0)
       setTotalTargetInput(proj?.total_sf_target || 0)
+      setCostInput(proj?.cost ?? '')
       if (pgs && pgs.length > 0) setActivePage(pgs[0])
 
       await loadTodaySessions(pgs || [])
@@ -474,6 +478,21 @@ export default function ProjectDetail() {
     } catch (err) { console.error(err) }
     finally { setSavingTotalTarget(false) }
   }
+
+  async function saveCost() {
+    setSavingCost(true)
+    try {
+      const val = costInput === '' ? null : (parseFloat(costInput) || null)
+      await supabase.from('projects').update({ cost: val }).eq('id', projectId)
+      setProject(p => ({ ...p, cost: val }))
+      setEditingCost(false)
+    } catch (err) { console.error(err) }
+    finally { setSavingCost(false) }
+  }
+
+  const ratePerSF = (project?.cost && project?.total_sf_target)
+    ? `$${(project.cost / project.total_sf_target).toFixed(2)}/SF`
+    : '—'
 
   if (loading) {
     return (
@@ -729,6 +748,42 @@ export default function ProjectDetail() {
                 )}
               </div>
 
+              {/* Contract cost / $ per SF */}
+              <div className="px-4 py-3 border-b border-border bg-surface/30">
+                <div className="flex justify-between items-baseline mb-2">
+                  <span className="text-xs text-muted font-medium">Contract Cost</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm font-semibold text-white">
+                      {project?.cost ? `$${project.cost.toLocaleString()}` : '—'}
+                      <span className="text-muted font-normal"> · {ratePerSF}</span>
+                    </span>
+                    {canManage && !editingCost && (
+                      <button onClick={() => setEditingCost(true)} className="btn-ghost p-1 ml-1">
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {editingCost && (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      value={costInput}
+                      onChange={e => setCostInput(e.target.value)}
+                      className="input w-28 text-xs py-1"
+                      min="0"
+                      placeholder="Contract cost ($)"
+                    />
+                    <button onClick={saveCost} disabled={savingCost} className="btn-primary text-xs py-1 px-2">
+                      {savingCost ? '...' : 'Save'}
+                    </button>
+                    <button onClick={() => setEditingCost(false)} className="btn-ghost text-xs py-1 px-2">Cancel</button>
+                  </div>
+                )}
+              </div>
+
               {/* Daily progress bar (green) */}
               <div className="px-4 py-3 border-b border-border bg-surface/30">
                 <div className="flex justify-between items-baseline mb-2">
@@ -862,6 +917,42 @@ export default function ProjectDetail() {
                   ) : (
                     <div className="h-2 bg-surface-3 rounded-full overflow-hidden">
                       <div className="h-full bg-blue-500/30 rounded-full" style={{ width: '0%' }} />
+                    </div>
+                  )}
+                </div>
+
+                {/* Contract cost / $ per SF */}
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <p className="text-xs text-muted font-medium">Contract Cost</p>
+                    <div className="flex items-center gap-1">
+                      <p className="text-xs text-gray-300">
+                        {project?.cost ? `$${project.cost.toLocaleString()}` : '—'}
+                        <span className="text-muted"> · {ratePerSF}</span>
+                      </p>
+                      {canManage && !editingCost && (
+                        <button onClick={() => setEditingCost(true)} className="btn-ghost p-0.5">
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {editingCost && (
+                    <div className="flex items-center gap-1 mb-1.5">
+                      <input
+                        type="number"
+                        value={costInput}
+                        onChange={e => setCostInput(e.target.value)}
+                        className="input w-24 text-xs py-1"
+                        min="0"
+                        placeholder="Cost ($)"
+                      />
+                      <button onClick={saveCost} disabled={savingCost} className="btn-primary text-xs py-1 px-2">
+                        {savingCost ? '...' : 'Save'}
+                      </button>
+                      <button onClick={() => setEditingCost(false)} className="btn-ghost text-xs py-1 px-1">✕</button>
                     </div>
                   )}
                 </div>

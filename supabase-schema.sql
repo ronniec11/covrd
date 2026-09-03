@@ -61,6 +61,15 @@ CREATE TABLE IF NOT EXISTS projects (
 
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 
+-- NOTE: this file is missing total_sf_target and description, which exist on
+-- the live table (added by hand, no prior migration comment). Add cost the
+-- same way:
+--   ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS total_sf_target numeric;
+--   ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS description text;
+--   ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS cost numeric;
+-- cost is nullable, no default — the $/SF rate (cost / total_sf_target) is
+-- computed client-side wherever it's shown, not stored.
+
 -- Members can see projects they belong to
 CREATE POLICY "projects_select_members" ON projects FOR SELECT USING (
   id IN (SELECT project_id FROM project_members WHERE user_id = auth.uid())
