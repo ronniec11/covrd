@@ -150,27 +150,27 @@ export default function Reports() {
 
         <div className="card mb-6">
           <div className="flex flex-wrap items-end gap-4">
-            <div>
+            <div className="flex-1 min-w-[160px]">
               <label className="block text-xs text-muted mb-1">Project</label>
               <select value={selectedProjectId} onChange={e => setSelectedProjectId(e.target.value)} className="input">
                 <option value="all">All Projects</option>
                 {projectOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
-            <div>
+            <div className="flex-1 min-w-[140px]">
               <label className="block text-xs text-muted mb-1">Start date</label>
               <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input" />
             </div>
-            <div>
+            <div className="flex-1 min-w-[140px]">
               <label className="block text-xs text-muted mb-1">End date</label>
               <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="input" />
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 shrink-0">
               <button onClick={() => setPreset('week')} className="btn-secondary text-sm">Last 7 days</button>
               <button onClick={() => setPreset('month')} className="btn-secondary text-sm">This month</button>
               <button onClick={() => setPreset('all')} className="btn-secondary text-sm">All time</button>
             </div>
-            <button onClick={runReport} disabled={loading} className="btn-primary">
+            <button onClick={runReport} disabled={loading} className="btn-primary shrink-0 w-full sm:w-auto">
               {loading ? 'Running…' : 'Run Report'}
             </button>
           </div>
