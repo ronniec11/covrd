@@ -814,6 +814,10 @@ export default function Canvas() {
     function onLeave() {
       if (cursorRingRef.current) cursorRingRef.current.style.display = 'none'
       drawCtx.clearRect(0, 0, cW, cH)
+      // An active rectangle lives on this same canvas — the pointer leaving
+      // to click a sidebar color/tool shouldn't hide it, and redrawing here
+      // also picks up any color change made while it was hovering the sidebar.
+      if (activeRect) drawActiveRectPreview()
       if (hoveredMarkerId !== null) { hoveredMarkerId = null; drawCountLayer() }
     }
 
@@ -1197,6 +1201,9 @@ export default function Canvas() {
       const match = colorGridRef.current.querySelector(`[data-c="${hex}"]`)
       if (match) match.classList.add('sel')
       if (tool === 'erase') setTool(prevTool)
+      // Reflect the new color on an active (not-yet-baked) rectangle right
+      // away, rather than waiting for the pointer to re-enter the canvas.
+      if (activeRect) drawActiveRectPreview()
     }
 
     // ── UNDO ─────────────────────────────────────────────────────────────────
