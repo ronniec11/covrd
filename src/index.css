@@ -60,6 +60,17 @@
     @apply bg-surface-2 border border-border rounded-lg px-3 py-2 text-gray-200 placeholder-muted text-sm w-full focus:outline-none focus:border-accent transition-colors;
   }
 
+  /* iOS Safari renders type="date"/"time" with its own native chrome that
+     ignores the border/background/radius above, so two of them next to
+     each other in a row can look visually fused into one box with no seam
+     between them even though the layout underneath is correct. Forcing
+     -webkit-appearance: none makes Safari respect the custom styling. */
+  input[type="date"],
+  input[type="time"] {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
   .label {
     @apply text-xs font-medium text-muted uppercase tracking-wider mb-1 block;
   }
