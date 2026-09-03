@@ -95,6 +95,7 @@ export default function Canvas() {
   const editCountRef     = useRef(null)
   const editCrewRef      = useRef(null)
   const editHoursRef     = useRef(null)
+  const editDateRef      = useRef(null)
   // save session modal
   const saveModalRef     = useRef(null)
   const saveNameRef      = useRef(null)
@@ -1390,6 +1391,7 @@ export default function Canvas() {
       e.stopPropagation()
       const pg = pages.find(p => p.id === pgId); if (!pg) return
       const sess = pg.sessions.find(s => s.id === sId)
+      if (!confirm(`Delete session "${sess?.name || 'Untitled'}"? This cannot be undone.`)) return
       pg.sessions = pg.sessions.filter(s => s.id !== sId)
       if (soloSession?.id === sId) soloSession = null
       invalidateSessions(); redrawAll(); renderSessions(); updateSF()
@@ -1576,6 +1578,7 @@ export default function Canvas() {
       editTarget = {pg, s}
       if (editNameRef.current) editNameRef.current.value = s.name
       if (editSFRef.current) editSFRef.current.value = Math.round(s.sf)
+      if (editDateRef.current) editDateRef.current.value = s.date || ''
       if (editCountRef.current) editCountRef.current.textContent = (s.count ?? s.countMarkers?.length ?? 0) + ' items'
       if (editColorsRef.current) editColorsRef.current.querySelectorAll('.ct-modal-cc').forEach(el => el.classList.toggle('sel', el.dataset.c === s.color))
       if (editCrewRef.current) editCrewRef.current.value = s.crewSize ?? ''
@@ -1588,6 +1591,7 @@ export default function Canvas() {
       const {s} = editTarget
       const newName = editNameRef.current?.value.trim()
       const newSF   = parseFloat(editSFRef.current?.value)
+      const newDate = editDateRef.current?.value
       const sel     = editColorsRef.current?.querySelector('.ct-modal-cc.sel')
       const crewRaw  = editCrewRef.current?.value
       const hoursRaw = editHoursRef.current?.value
@@ -1595,6 +1599,7 @@ export default function Canvas() {
       const newHours = hoursRaw ? parseFloat(hoursRaw) : null
       if (newName) s.name = newName
       if (!isNaN(newSF) && newSF >= 0) s.sf = newSF
+      if (newDate) s.date = newDate
       if (sel) s.color = sel.dataset.c
       s.crewSize    = (newCrew != null && !isNaN(newCrew)) ? newCrew : null
       s.hoursWorked = (newHours != null && !isNaN(newHours)) ? newHours : null
@@ -1602,7 +1607,7 @@ export default function Canvas() {
       renderSessions(); updateSF(); redrawAll()
       if (s.supabaseId) {
         console.log('[Canvas] Updating session in Supabase:', s.supabaseId, s.name)
-        const payload = { name: s.name, color: s.color, sf: s.sf, crew_size: s.crewSize, hours_worked: s.hoursWorked }
+        const payload = { name: s.name, color: s.color, sf: s.sf, work_date: s.date, crew_size: s.crewSize, hours_worked: s.hoursWorked }
         let { error } = await supabase.from('sessions').update(payload).eq('id', s.supabaseId)
         let crewHoursDropped = false
         if (error && /crew_size|hours_worked/.test(error.message)) {
@@ -2725,6 +2730,10 @@ export default function Canvas() {
           <div className="ct-modal-field">
             <label className="ct-modal-lbl">Square Footage</label>
             <input ref={editSFRef} className="ct-modal-input" type="number" min="0" step="1" placeholder="SF" />
+          </div>
+          <div className="ct-modal-field">
+            <label className="ct-modal-lbl">Date Performed</label>
+            <input ref={editDateRef} className="ct-modal-input" type="date" />
           </div>
           <div className="ct-modal-field">
             <label className="ct-modal-lbl">Count Items</label>
