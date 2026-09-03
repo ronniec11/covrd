@@ -549,6 +549,18 @@ export default function Canvas() {
       return null
     }
 
+    // The image-space point that stays fixed while dragging a given corner
+    // handle — the OPPOSITE corner of activeRect's CURRENT bounds. Must be
+    // recomputed every time a handle is grabbed (not just once at rect
+    // creation), or resizing after the rect has already been moved/resized
+    // once snaps it back to a stale anchor from an earlier drag.
+    function rectAnchorForHandle(handle) {
+      if (handle === 'nw') return {x: activeRect.maxX, y: activeRect.maxY}
+      if (handle === 'ne') return {x: activeRect.minX, y: activeRect.maxY}
+      if (handle === 'sw') return {x: activeRect.maxX, y: activeRect.minY}
+      return {x: activeRect.minX, y: activeRect.minY}  // 'se'
+    }
+
     function drawActiveRectPreview() {
       drawCtx.clearRect(0, 0, cW, cH)
       if (!activeRect || !activePage) return
@@ -639,6 +651,13 @@ export default function Canvas() {
       badge.style.display = hasContent ? 'flex' : 'none'
     }
 
+    function canvasHasPixels(cvs, ctx) {
+      if (!cvs || cvs.width === 0 || cvs.height === 0) return false
+      const d = ctx.getImageData(0, 0, cvs.width, cvs.height).data
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 10) return true
+      return false
+    }
+
     function checkHasLiveContent() {
       if (liveCountMarkers.length > 0) return true
       if (activeRect && (activeRect.maxX - activeRect.minX) >= 2 && (activeRect.maxY - activeRect.minY) >= 2) return true
@@ -694,7 +713,7 @@ export default function Canvas() {
           const pt = s2i(pos.x, pos.y)
           if (activeRect) {
             const handle = hitRectHandle(pos.x, pos.y)
-            if (handle) { rectHandle = handle; return }
+            if (handle) { rectHandle = handle; rectFixed = rectAnchorForHandle(handle); return }
             if (pt.x >= activeRect.minX && pt.x <= activeRect.maxX && pt.y >= activeRect.minY && pt.y <= activeRect.maxY) {
               rectHandle = 'move'; rectMoveStart = pt; rectMoveOrig = {...activeRect}; return
             }
@@ -966,7 +985,7 @@ export default function Canvas() {
         const pt = s2i(pos.x, pos.y)
         if (activeRect) {
           const handle = hitRectHandle(pos.x, pos.y)
-          if (handle) { rectHandle = handle; return }
+          if (handle) { rectHandle = handle; rectFixed = rectAnchorForHandle(handle); return }
           if (pt.x >= activeRect.minX && pt.x <= activeRect.maxX && pt.y >= activeRect.minY && pt.y <= activeRect.maxY) {
             rectHandle = 'move'; rectMoveStart = pt; rectMoveOrig = {...activeRect}; return
           }
@@ -1666,9 +1685,21 @@ export default function Canvas() {
         pen: livePenCtx.getImageData(0, 0, livePenCanvas.width, livePenCanvas.height),
         cnt: [...liveCountMarkers],
       }]
-      // Auto-select tool: count if forced, or if session only has count (no SF), else highlight
-      if (forceCountTool || (s.sf === 0 && liveCountMarkers.length > 0)) {
+      // Resume with the same color the session was painted in, so new
+      // strokes look consistent with the existing markup while editing
+      // (final render always re-tints to s.color regardless, but the color
+      // picked here is what the live preview shows before that happens).
+      if (s.color) pickColor(s.color)
+      // Auto-select tool: count if forced or the session is count-only; pen
+      // if it's pen-only; otherwise highlight (a baked rectangle and a
+      // freehand highlight stroke are the same pixels once saved, so
+      // highlight covers both — the Rectangle tool is still one click away).
+      const hasHL  = canvasHasPixels(liveHlCanvas, liveHlCtx)
+      const hasPen = canvasHasPixels(livePenCanvas, livePenCtx)
+      if (forceCountTool || (!hasHL && !hasPen && liveCountMarkers.length > 0)) {
         setTool('count')
+      } else if (hasPen && !hasHL) {
+        setTool('pen')
       } else {
         setTool('highlight')
       }
