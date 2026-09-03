@@ -181,6 +181,15 @@ CREATE POLICY "sessions_update_own" ON sessions FOR UPDATE USING (
 -- Enable realtime on sessions table
 ALTER PUBLICATION supabase_realtime ADD TABLE sessions;
 
+-- NOTE: this file also drifts from the live DB for sessions — name, color,
+-- sf, work_date, count_data, highlight_data, pen_data were added by hand and
+-- aren't listed in the CREATE TABLE above (the live table uses sf/work_date,
+-- not sf_calculated/date). Add crew_size/hours_worked the same way:
+--   ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS crew_size integer;
+--   ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS hours_worked numeric;
+-- Both optional/nullable, no default — set only via the session edit modal
+-- in Canvas.jsx, not at initial session creation.
+
 -- ============================================
 -- STORAGE — floor-plans bucket
 -- ============================================

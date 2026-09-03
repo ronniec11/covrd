@@ -8,6 +8,11 @@ import './Canvas.css'
 
 // NOTE: Run this migration in Supabase SQL editor before using count tool:
 // ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS count_data jsonb DEFAULT '[]';
+//
+// NOTE: Run this migration to enable crew size / hours worked on session edit
+// (used by the production tracking report — see src/pages/Reports.jsx):
+// ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS crew_size integer;
+// ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS hours_worked numeric;
 
 const COLORS = [
   '#facc15','#4ade80','#60a5fa','#f97316','#f472b6','#a78bfa',
@@ -86,6 +91,8 @@ export default function Canvas() {
   const editSFRef        = useRef(null)
   const editColorsRef    = useRef(null)
   const editCountRef     = useRef(null)
+  const editCrewRef      = useRef(null)
+  const editHoursRef     = useRef(null)
   // history modal
   const histModalRef     = useRef(null)
   const calMonthLblRef   = useRef(null)
@@ -1341,6 +1348,8 @@ export default function Canvas() {
       if (editSFRef.current) editSFRef.current.value = Math.round(s.sf)
       if (editCountRef.current) editCountRef.current.textContent = (s.count ?? s.countMarkers?.length ?? 0) + ' items'
       if (editColorsRef.current) editColorsRef.current.querySelectorAll('.ct-modal-cc').forEach(el => el.classList.toggle('sel', el.dataset.c === s.color))
+      if (editCrewRef.current) editCrewRef.current.value = s.crewSize ?? ''
+      if (editHoursRef.current) editHoursRef.current.value = s.hoursWorked ?? ''
       if (editModalRef.current) editModalRef.current.classList.add('open')
     }
     function closeEditModal() { if (editModalRef.current) editModalRef.current.classList.remove('open') }
@@ -1350,18 +1359,28 @@ export default function Canvas() {
       const newName = editNameRef.current?.value.trim()
       const newSF   = parseFloat(editSFRef.current?.value)
       const sel     = editColorsRef.current?.querySelector('.ct-modal-cc.sel')
+      const crewRaw  = editCrewRef.current?.value
+      const hoursRaw = editHoursRef.current?.value
+      const newCrew  = crewRaw  ? parseInt(crewRaw, 10) : null
+      const newHours = hoursRaw ? parseFloat(hoursRaw) : null
       if (newName) s.name = newName
       if (!isNaN(newSF) && newSF >= 0) s.sf = newSF
       if (sel) s.color = sel.dataset.c
+      s.crewSize    = (newCrew != null && !isNaN(newCrew)) ? newCrew : null
+      s.hoursWorked = (newHours != null && !isNaN(newHours)) ? newHours : null
       editTarget = null; closeEditModal(); invalidateSessions()
       renderSessions(); updateSF(); redrawAll()
       if (s.supabaseId) {
         console.log('[Canvas] Updating session in Supabase:', s.supabaseId, s.name)
-        await supabase.from('sessions').update({
-          name:  s.name,
-          color: s.color,
-          sf:    s.sf,
-        }).eq('id', s.supabaseId)
+        const payload = { name: s.name, color: s.color, sf: s.sf, crew_size: s.crewSize, hours_worked: s.hoursWorked }
+        let { error } = await supabase.from('sessions').update(payload).eq('id', s.supabaseId)
+        if (error && /crew_size|hours_worked/.test(error.message)) {
+          // Pre-migration DB — retry without the not-yet-existing columns.
+          console.warn('[Canvas] crew_size/hours_worked columns missing, retrying without them — run the migration noted at the top of this file.')
+          const { crew_size, hours_worked, ...rest } = payload
+          ;({ error } = await supabase.from('sessions').update(rest).eq('id', s.supabaseId))
+        }
+        if (error) console.error('[Canvas] saveEdit update failed:', error)
       }
     }
 
@@ -1882,6 +1901,8 @@ export default function Canvas() {
           pageName:     activePage.name,
           date,
           time:         dbSess.created_at ? new Date(dbSess.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '',
+          crewSize:     dbSess.crew_size ?? null,
+          hoursWorked:  dbSess.hours_worked ?? null,
           supabaseId:   dbSess.id,
         })
       }
@@ -2448,6 +2469,14 @@ export default function Canvas() {
             <label className="ct-modal-lbl">Count Items</label>
             <span ref={editCountRef} className="ct-modal-input" style={{ display: 'block', cursor: 'default', marginBottom: 6 }}>0 items</span>
             <div className="ct-modal-btn paint" style={{ width: '100%', boxSizing: 'border-box' }} onClick={() => api.current.startCountEdit?.()}>+ Edit Count on Canvas</div>
+          </div>
+          <div className="ct-modal-field">
+            <label className="ct-modal-lbl">Crew Size (optional)</label>
+            <input ref={editCrewRef} className="ct-modal-input" type="number" min="0" step="1" placeholder="e.g. 3" />
+          </div>
+          <div className="ct-modal-field">
+            <label className="ct-modal-lbl">Hours Worked (optional)</label>
+            <input ref={editHoursRef} className="ct-modal-input" type="number" min="0" step="0.25" placeholder="e.g. 4.5" />
           </div>
           <div className="ct-modal-field">
             <label className="ct-modal-lbl">Color</label>
