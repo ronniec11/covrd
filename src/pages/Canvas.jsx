@@ -1365,20 +1365,26 @@ export default function Canvas() {
           updated_at:     new Date().toISOString(),
         }
 
-        let { error } = await supabase.from('sessions').insert(insertPayload)
+        // .select().single() pulls the inserted row's id back so it can be
+        // stashed on the local session object below — without it, editing or
+        // deleting a session you just saved (same visit, before any reload)
+        // had no supabaseId to target, so saveEdit/deleteSession silently
+        // no-op'd: the local UI updated but nothing reached the database.
+        let { data, error } = await supabase.from('sessions').insert(insertPayload).select('id').single()
         if (error && /crew_size|hours_worked/.test(error.message)) {
           // Pre-migration DB — retry without the not-yet-existing columns so
           // the session still saves (see the ALTER TABLE note at the top of
           // this file), loudly telling the user their crew/hours were dropped.
           console.warn('[Canvas] crew_size/hours_worked columns missing on insert, retrying without them.')
           const { crew_size, hours_worked, ...rest } = insertPayload
-          ;({ error } = await supabase.from('sessions').insert(rest))
+          ;({ data, error } = await supabase.from('sessions').insert(rest).select('id').single())
           if (!error && (session.crewSize != null || session.hoursWorked != null)) {
             alert('Session saved, but Crew Size / Hours Worked were NOT saved — the database is missing those columns. Run the migration noted at the top of Canvas.jsx (crew_size/hours_worked ALTER TABLE) in the Supabase SQL editor, then re-enter them via the session\'s edit (pencil) button.')
           }
         }
         if (error) throw error
-        console.log('[Canvas] Session saved to Supabase')
+        if (data?.id) session.supabaseId = data.id
+        console.log('[Canvas] Session saved to Supabase, id:', data?.id)
         return true
       } catch (err) {
         console.error('[Canvas] Failed to save session:', err)
