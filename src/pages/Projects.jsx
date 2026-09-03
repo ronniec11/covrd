@@ -57,7 +57,7 @@ function StatusBadge({ status, onSave, className = '' }) {
 
 function CreateProjectModal({ onClose, onCreated }) {
   const { user } = useAuth()
-  const [form, setForm] = useState({ name: '', description: '', address: '', status: 'active', daily_sf_target: '', total_sf_target: '', cost: '' })
+  const [form, setForm] = useState({ name: '', description: '', status: 'active', daily_sf_target: '', total_sf_target: '', cost: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -73,7 +73,6 @@ function CreateProjectModal({ onClose, onCreated }) {
         .insert({
           name: form.name.trim(),
           description: form.description.trim() || null,
-          address: form.address.trim() || null,
           status: form.status,
           daily_sf_target: parseFloat(form.daily_sf_target) || 0,
           total_sf_target: parseFloat(form.total_sf_target) || 0,
@@ -121,10 +120,6 @@ function CreateProjectModal({ onClose, onCreated }) {
           <div>
             <label className="label">Description</label>
             <input className="input" value={form.description} onChange={e => set('description', e.target.value)} placeholder="e.g. Overhead steel cleaning, Level 1 final clean, Post-construction detail" />
-          </div>
-          <div>
-            <label className="label">Address</label>
-            <input className="input" value={form.address} onChange={e => set('address', e.target.value)} placeholder="123 Industrial Blvd" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -324,9 +319,6 @@ function ProjectCard({ project, todaySF, allTimeSF, onClick, onRename, onUpdateP
                   </button>
                 )}
               </div>
-              {project.address && (
-                <p className="text-xs text-muted mt-0.5 truncate">{project.address}</p>
-              )}
               {project.description && (
                 <p className="text-xs text-gray-400 mt-1 line-clamp-2">{project.description}</p>
               )}

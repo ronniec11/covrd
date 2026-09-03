@@ -572,7 +572,6 @@ export default function ProjectDetail() {
                         </button>
                       )}
                     </div>
-                    {project.address && <p className="text-sm text-muted mt-0.5">{project.address}</p>}
                     {project.description && <p className="text-sm text-gray-400 mt-0.5">{project.description}</p>}
                   </>
                 )}
