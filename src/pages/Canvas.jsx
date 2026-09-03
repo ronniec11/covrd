@@ -152,7 +152,7 @@ export default function Canvas() {
     let activePage     = null
     let osdViewer      = null
     let osdOverlayScale = 1
-    let tool           = 'highlight'
+    let tool           = 'rect'
     let brushSize      = 20
     let activeColor    = '#facc15'
     let sessionCounter = 1
@@ -247,7 +247,7 @@ export default function Canvas() {
     let dayColorIdx     = 0
     let editTarget      = null
     let editingSession  = false
-    let prevTool        = 'highlight'
+    let prevTool        = 'rect'
     let draftInterval   = null
     let realtimeSub     = null
     let cachedLivePx    = 0   // pixel count of liveHlCanvas, updated on content change
@@ -2681,13 +2681,13 @@ export default function Canvas() {
           <div className="ct-sb-sec">
             <div className="ct-sb-ttl">Tool</div>
             <div className="ct-tool-row">
-              <div ref={btnHlRef}    className="ct-tbtn t-hl" onClick={() => api.current.setTool?.('highlight')}>Highlight</div>
-              <div ref={btnPenRef}   className="ct-tbtn"      onClick={() => api.current.setTool?.('pen')}>Pen</div>
-              <div ref={btnErRef}    className="ct-tbtn"      onClick={() => api.current.setTool?.('erase')}>Erase</div>
+              <div ref={btnRectRef}  className="ct-tbtn t-rect" onClick={() => api.current.setTool?.('rect')}>Rectangle</div>
+              <div ref={btnHlRef}    className="ct-tbtn"        onClick={() => api.current.setTool?.('highlight')}>Highlight</div>
+              <div ref={btnErRef}    className="ct-tbtn"        onClick={() => api.current.setTool?.('erase')}>Erase</div>
             </div>
             <div className="ct-tool-row">
               <div ref={btnCountRef} className="ct-tbtn" onClick={() => api.current.setTool?.('count')}>Count</div>
-              <div ref={btnRectRef}  className="ct-tbtn" onClick={() => api.current.setTool?.('rect')}>Rectangle</div>
+              <div ref={btnPenRef}   className="ct-tbtn" onClick={() => api.current.setTool?.('pen')}>Pen</div>
             </div>
             <div className="ct-sb-ttl">Brush Size</div>
             <div className="ct-brush-row">
