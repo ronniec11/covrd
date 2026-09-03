@@ -1463,8 +1463,17 @@ export default function Canvas() {
             count_data,
             updated_at:     new Date().toISOString(),
           })
-          if (error) console.error('[Canvas] Failed to update session:', error)
-          else { console.log('[Canvas] Session updated in Supabase'); showToast('Session updated!') }
+          if (error) {
+            console.error('[Canvas] Failed to update session:', error)
+            // upsert failing here (e.g. the "update your own sessions only"
+            // RLS policy rejecting it) previously only logged to console and
+            // silently skipped the success toast — easy to miss entirely,
+            // especially on iPad with no console visible. Make it loud.
+            alert('Failed to save session update: ' + (error.message || JSON.stringify(error)))
+          } else {
+            console.log('[Canvas] Session updated in Supabase')
+            showToast('Session updated!')
+          }
         })()
       }
     }
