@@ -63,7 +63,6 @@ export default function Canvas() {
   const hdrTotalRef         = useRef(null)
   const hdrPctRef           = useRef(null)
   const hdrProgressFillRef  = useRef(null)
-  const hdrCostRef          = useRef(null)
   // sidebar
   const btnHlRef         = useRef(null)
   const btnPenRef        = useRef(null)
@@ -238,7 +237,7 @@ export default function Canvas() {
     let dayRecords      = []
     let todayTarget       = 0
     let totalBuildingSF   = 0   // project's total_sf_target, for the header % bar
-    let projectCost       = 0   // project's cost, for the header $/SF stat
+    let projectCost       = 0   // project's cost — fetched but not shown on this page for now (see ProjectDetail.jsx/Projects.jsx)
     let calYear         = 0
     let calMonth        = 0
     let calSelectedDate = null
@@ -2253,11 +2252,6 @@ export default function Canvas() {
       if (project?.cost) {
         projectCost = project.cost
       }
-      if (hdrCostRef.current) {
-        hdrCostRef.current.textContent = (projectCost && totalBuildingSF)
-          ? '$' + (projectCost / totalBuildingSF).toFixed(2)
-          : '–'
-      }
 
       const savedPPF = pg.pixels_per_foot || null
       const savedCalibrated = pg.calibrated || false
@@ -2593,11 +2587,6 @@ export default function Canvas() {
         <div className="ct-stat-box" style={{minWidth:55}}>
           <div ref={hdrPctRef} className="ct-stat-val" style={{color:'#3b82f6'}}>–</div>
           <div className="ct-stat-lbl">of target</div>
-        </div>
-        <div className="ct-hdiv" />
-        <div className="ct-stat-box" style={{minWidth:55}}>
-          <div ref={hdrCostRef} className="ct-stat-val" style={{color:'#facc15'}}>–</div>
-          <div className="ct-stat-lbl">target $/SF</div>
         </div>
         <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
           {canvasProfile && (
