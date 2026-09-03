@@ -1470,7 +1470,7 @@ export default function Canvas() {
         card.append(top, sfDiv)
 
         const metaDiv = document.createElement('div'); metaDiv.className = 'ct-scard-meta'
-        metaDiv.textContent = pg.name + ' · ' + (s.time || s.date || '') + ' · ' + (s.userName || s.name || '')
+        metaDiv.textContent = [pg.name, formatMD(s.date), s.time, (s.userName || s.name)].filter(Boolean).join(' · ')
         card.appendChild(metaDiv)
         card.addEventListener('click', () => toggleSolo(s))
         list.appendChild(card)
@@ -1819,6 +1819,14 @@ export default function Canvas() {
     // ── HISTORY ───────────────────────────────────────────────────────────────
     function getCurrentDate() {
       return new Date().toLocaleDateString('en-CA')
+    }
+    // 'YYYY-MM-DD' -> 'M/D' — split rather than `new Date(dateStr)` so this
+    // doesn't shift a day depending on the viewer's timezone.
+    function formatMD(dateStr) {
+      if (!dateStr) return ''
+      const parts = dateStr.split('-')
+      if (parts.length !== 3) return dateStr
+      return parseInt(parts[1], 10) + '/' + parseInt(parts[2], 10)
     }
     function getDayColor(date) {
       const rec = dayRecords.find(r => r.date === date)
