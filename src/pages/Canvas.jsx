@@ -68,6 +68,7 @@ export default function Canvas() {
   const btnPenRef        = useRef(null)
   const btnErRef         = useRef(null)
   const btnCountRef      = useRef(null)   // count tool button
+  const btnRectRef       = useRef(null)   // rectangle tool button
   const brushRangeRef    = useRef(null)
   const brushValRef      = useRef(null)
   const colorGridRef     = useRef(null)
@@ -174,6 +175,17 @@ export default function Canvas() {
     let liveCountMarkers = []   // {id, x, y, num, color} in image coords
     let hoveredMarkerId  = null
     let countSymbol = 'num'     // 'num' | 'check' | 'x'
+
+    // Rectangle tool — an active rect stays a live, adjustable shape (drag
+    // corner handles to expand/collapse, drag inside to move) rather than
+    // being rasterized immediately, so its SF can be tuned before it's
+    // baked into liveHlCanvas. Coordinates are image-space, always
+    // normalized (minX<=maxX, minY<=maxY).
+    let activeRect    = null   // {minX, minY, maxX, maxY} | null
+    let rectHandle    = null   // 'nw'|'ne'|'sw'|'se'|'move' | null
+    let rectFixed     = null   // image-space anchor point for a corner drag
+    let rectMoveStart = null   // image-space pointer position when a move-drag started
+    let rectMoveOrig  = null   // activeRect snapshot when a move-drag started
 
     // Session composite cache
     let sessionsHL    = document.createElement('canvas')
@@ -415,6 +427,10 @@ export default function Canvas() {
       }
 
       redrawHL(); redrawPen(); drawCountLayer()
+      // An active (not-yet-baked) rectangle stays adjustable across pan/zoom
+      // (mouse wheel, pinch, or the OSD viewport on tiled iPad pages), so its
+      // preview needs to track the same transform as everything else here.
+      if (activeRect) drawActiveRectPreview()
     }
 
     function redrawHL() {
@@ -508,6 +524,88 @@ export default function Canvas() {
       updateUnsaved(true)
     }
 
+    // ── RECTANGLE TOOL ────────────────────────────────────────────────────────
+    function hitRectHandle(sx, sy) {
+      if (!activeRect || !activePage) return null
+      const z = activePage.zoom, p = activePage.pan
+      const corners = {
+        nw: {x: activeRect.minX, y: activeRect.minY},
+        ne: {x: activeRect.maxX, y: activeRect.minY},
+        sw: {x: activeRect.minX, y: activeRect.maxY},
+        se: {x: activeRect.maxX, y: activeRect.maxY},
+      }
+      for (const name in corners) {
+        const hx = corners[name].x * z + p.x, hy = corners[name].y * z + p.y
+        if (Math.hypot(sx - hx, sy - hy) < 16) return name
+      }
+      return null
+    }
+
+    function drawActiveRectPreview() {
+      drawCtx.clearRect(0, 0, cW, cH)
+      if (!activeRect || !activePage) return
+      const z = activePage.zoom, p = activePage.pan
+      const sx1 = activeRect.minX * z + p.x, sy1 = activeRect.minY * z + p.y
+      const sx2 = activeRect.maxX * z + p.x, sy2 = activeRect.maxY * z + p.y
+      drawCtx.save()
+      drawCtx.fillStyle = activeColor
+      drawCtx.globalAlpha = 0.30
+      drawCtx.fillRect(sx1, sy1, sx2 - sx1, sy2 - sy1)
+      drawCtx.globalAlpha = 1
+      drawCtx.strokeStyle = activeColor
+      drawCtx.lineWidth = 2
+      drawCtx.setLineDash([6, 4])
+      drawCtx.strokeRect(sx1, sy1, sx2 - sx1, sy2 - sy1)
+      drawCtx.setLineDash([])
+      const HR = 6
+      ;[[sx1, sy1], [sx2, sy1], [sx1, sy2], [sx2, sy2]].forEach(([hx, hy]) => {
+        drawCtx.fillStyle = '#fff'
+        drawCtx.fillRect(hx - HR, hy - HR, HR * 2, HR * 2)
+        drawCtx.strokeStyle = activeColor
+        drawCtx.lineWidth = 2
+        drawCtx.strokeRect(hx - HR, hy - HR, HR * 2, HR * 2)
+      })
+      drawCtx.restore()
+
+      const rectSF = Math.round(toSF((activeRect.maxX - activeRect.minX) * (activeRect.maxY - activeRect.minY)))
+      const label = rectSF.toLocaleString() + ' SF'
+      drawCtx.save()
+      drawCtx.font = 'bold 12px system-ui,sans-serif'
+      const tw = drawCtx.measureText(label).width
+      const lx = Math.min(sx1, sx2), ly = Math.min(sy1, sy2) - 10
+      drawCtx.fillStyle = 'rgba(0,0,0,0.75)'
+      drawCtx.fillRect(lx - 4, ly - 14, tw + 8, 18)
+      drawCtx.fillStyle = '#fff'
+      drawCtx.fillText(label, lx, ly)
+      drawCtx.restore()
+    }
+
+    // Rasterizes the active rectangle into liveHlCanvas (same layer/undo/SF
+    // semantics as a freehand highlight stroke) and clears the adjustable
+    // shape state. Degenerate (near-zero-area) rects are discarded silently
+    // — a plain tap with no drag shouldn't leave a stray sliver.
+    function bakeActiveRect() {
+      if (!activeRect) return
+      const w = activeRect.maxX - activeRect.minX
+      const h = activeRect.maxY - activeRect.minY
+      if (w < 2 || h < 2) { activeRect = null; rectHandle = null; drawActiveRectPreview(); return }
+      undoStack.push({
+        hl:  liveHlCtx.getImageData(0, 0, liveHlCanvas.width, liveHlCanvas.height),
+        pen: livePenCtx.getImageData(0, 0, livePenCanvas.width, livePenCanvas.height),
+        cnt: [...liveCountMarkers],
+      })
+      if (undoStack.length > MAX_UNDO) undoStack.shift()
+      liveHlCtx.save()
+      liveHlCtx.globalCompositeOperation = 'source-over'
+      liveHlCtx.fillStyle = activeColor
+      liveHlCtx.fillRect(activeRect.minX, activeRect.minY, w, h)
+      liveHlCtx.restore()
+      activeRect = null; rectHandle = null
+      drawActiveRectPreview()
+      redrawAll(); updateSF()
+      if (checkHasLiveContent()) updateUnsaved(true)
+    }
+
     function tintCanvas(src, hexColor) {
       try {
         if (!src || !hexColor || src.width === 0 || src.height === 0) return null
@@ -535,6 +633,7 @@ export default function Canvas() {
 
     function checkHasLiveContent() {
       if (liveCountMarkers.length > 0) return true
+      if (activeRect && (activeRect.maxX - activeRect.minX) >= 2 && (activeRect.maxY - activeRect.minY) >= 2) return true
       const hd = liveHlCtx.getImageData(0, 0, liveHlCanvas.width, liveHlCanvas.height).data
       for (let i = 3; i < hd.length; i += 4) if (hd[i] > 10) return true
       return false
@@ -583,6 +682,22 @@ export default function Canvas() {
         // it active while painting/placing markers means nothing you draw
         // shows up until it's cleared. Clear before either tool acts.
         if (soloSession) { soloSession = null; renderSessions() }
+        if (tool === 'rect') {
+          const pt = s2i(pos.x, pos.y)
+          if (activeRect) {
+            const handle = hitRectHandle(pos.x, pos.y)
+            if (handle) { rectHandle = handle; return }
+            if (pt.x >= activeRect.minX && pt.x <= activeRect.maxX && pt.y >= activeRect.minY && pt.y <= activeRect.maxY) {
+              rectHandle = 'move'; rectMoveStart = pt; rectMoveOrig = {...activeRect}; return
+            }
+            bakeActiveRect()
+          }
+          activeRect = {minX: pt.x, minY: pt.y, maxX: pt.x, maxY: pt.y}
+          rectFixed = {x: pt.x, y: pt.y}
+          rectHandle = 'se'
+          drawActiveRectPreview(); updateSFDisplay()
+          return
+        }
         if (tool === 'count') {
           const hit = liveCountMarkers.findIndex(m => {
             const sx = m.x * activePage.zoom + activePage.pan.x
@@ -630,6 +745,19 @@ export default function Canvas() {
           if (hoveredMarkerId !== prev) drawCountLayer()
           drawEl.style.cursor = hoveredMarkerId ? 'pointer' : 'crosshair'
         }
+      } else if (tool === 'rect') {
+        ring.style.display = 'none'
+        if (activePage && !rectHandle) {
+          const h = hitRectHandle(pos.x, pos.y)
+          if (h) {
+            drawEl.style.cursor = (h === 'nw' || h === 'se') ? 'nwse-resize' : 'nesw-resize'
+          } else {
+            const pt = s2i(pos.x, pos.y)
+            const inside = activeRect && pt.x >= activeRect.minX && pt.x <= activeRect.maxX
+              && pt.y >= activeRect.minY && pt.y <= activeRect.maxY
+            drawEl.style.cursor = inside ? 'move' : 'crosshair'
+          }
+        }
       } else {
         ring.style.width  = brushSize * 2 + 'px'
         ring.style.height = brushSize * 2 + 'px'
@@ -645,6 +773,19 @@ export default function Canvas() {
         panStart = {x: e.clientX, y: e.clientY}
         return
       }
+      if (tool === 'rect' && rectHandle) {
+        const pt = s2i(pos.x, pos.y)
+        if (rectHandle === 'move') {
+          const dx = pt.x - rectMoveStart.x, dy = pt.y - rectMoveStart.y
+          activeRect.minX = rectMoveOrig.minX + dx; activeRect.maxX = rectMoveOrig.maxX + dx
+          activeRect.minY = rectMoveOrig.minY + dy; activeRect.maxY = rectMoveOrig.maxY + dy
+        } else {
+          activeRect.minX = Math.min(rectFixed.x, pt.x); activeRect.maxX = Math.max(rectFixed.x, pt.x)
+          activeRect.minY = Math.min(rectFixed.y, pt.y); activeRect.maxY = Math.max(rectFixed.y, pt.y)
+        }
+        drawActiveRectPreview(); updateSFDisplay(); updateUnsaved(checkHasLiveContent())
+        return
+      }
       if (isPainting) {
         const pt = s2i(pos.x, pos.y)
         doPaint(pt.x, pt.y, lastPenPt); lastPenPt = pt
@@ -652,6 +793,7 @@ export default function Canvas() {
     }
 
     function onUp() {
+      rectHandle = null
       if (isPainting) {
         isPainting = false; lastPenPt = null
         cancelAnimationFrame(rafId); rafId = 0
@@ -793,7 +935,7 @@ export default function Canvas() {
         // A second finger landed — undo the stray dot the first touch may have
         // just painted, then switch to two-finger pan/pinch-zoom.
         if (touchPainting) undoLast()
-        touchPainting = false; lastTouchPt = null
+        touchPainting = false; lastTouchPt = null; rectHandle = null
         const r = drawEl.getBoundingClientRect()
         const t0 = e.touches[0], t1 = e.touches[1]
         const mx = ((t0.clientX + t1.clientX) / 2) - r.left
@@ -808,6 +950,22 @@ export default function Canvas() {
       // See onDown — solo view is a static snapshot; leaving it active while
       // drawing/placing markers hides everything you do until it's cleared.
       if (soloSession) { soloSession = null; renderSessions() }
+      if (tool === 'rect') {
+        const pt = s2i(pos.x, pos.y)
+        if (activeRect) {
+          const handle = hitRectHandle(pos.x, pos.y)
+          if (handle) { rectHandle = handle; return }
+          if (pt.x >= activeRect.minX && pt.x <= activeRect.maxX && pt.y >= activeRect.minY && pt.y <= activeRect.maxY) {
+            rectHandle = 'move'; rectMoveStart = pt; rectMoveOrig = {...activeRect}; return
+          }
+          bakeActiveRect()
+        }
+        activeRect = {minX: pt.x, minY: pt.y, maxX: pt.x, maxY: pt.y}
+        rectFixed = {x: pt.x, y: pt.y}
+        rectHandle = 'se'
+        drawActiveRectPreview(); updateSFDisplay()
+        return
+      }
       if (tool === 'count') {
         const hit = liveCountMarkers.findIndex(m => {
           const sx = m.x * activePage.zoom + activePage.pan.x
@@ -853,6 +1011,20 @@ export default function Canvas() {
         pinchLastMid = {x: mx, y: my}
         return
       }
+      if (tool === 'rect' && rectHandle) {
+        const pos = getTouchPos(e)
+        const pt = s2i(pos.x, pos.y)
+        if (rectHandle === 'move') {
+          const dx = pt.x - rectMoveStart.x, dy = pt.y - rectMoveStart.y
+          activeRect.minX = rectMoveOrig.minX + dx; activeRect.maxX = rectMoveOrig.maxX + dx
+          activeRect.minY = rectMoveOrig.minY + dy; activeRect.maxY = rectMoveOrig.maxY + dy
+        } else {
+          activeRect.minX = Math.min(rectFixed.x, pt.x); activeRect.maxX = Math.max(rectFixed.x, pt.x)
+          activeRect.minY = Math.min(rectFixed.y, pt.y); activeRect.maxY = Math.max(rectFixed.y, pt.y)
+        }
+        drawActiveRectPreview(); updateSFDisplay(); updateUnsaved(checkHasLiveContent())
+        return
+      }
       if (!touchPainting) return
       const pos = getTouchPos(e)
       const pt = s2i(pos.x, pos.y)
@@ -863,6 +1035,7 @@ export default function Canvas() {
       e.preventDefault()
       touchPainting = false; lastTouchPt = null
       pinchLastDist = 0; pinchLastMid = null
+      rectHandle = null
       cancelAnimationFrame(rafId); rafId = 0
       redrawAll(); updateSF()
       if (checkHasLiveContent()) updateUnsaved(true)
@@ -947,6 +1120,13 @@ export default function Canvas() {
 
     function toSF(px) { return activePage ? px / (activePage.ppf * activePage.ppf) : 0 }
 
+    // SF of the active (not-yet-baked) rectangle, if any — analytical, no scan.
+    function activeRectSF() {
+      if (!activeRect) return 0
+      const px = Math.max(0, activeRect.maxX - activeRect.minX) * Math.max(0, activeRect.maxY - activeRect.minY)
+      return toSF(px)
+    }
+
     function updateSF() {
       if (!activePage) { if (hdrSessionRef.current) hdrSessionRef.current.textContent = '0'; if (hdrTotalRef.current) hdrTotalRef.current.textContent = '0'; return }
       cachedLivePx = countPx(liveHlCanvas)
@@ -966,12 +1146,16 @@ export default function Canvas() {
     }
 
     // Fast display update — no ImageData reads, safe to call on scale changes
+    // and on every rect-tool drag frame. An active (not-yet-baked) rectangle
+    // is a perfect box, so its area is added analytically rather than via a
+    // full countPx() rescan — cheap enough to run on every pointer move.
     function updateSFDisplay() {
       if (!activePage) return
-      const liveSF   = Math.round(toSF(cachedLivePx))
-      const totalSF  = Math.round(cachedTotalSF)
-      const totalPct = totalBuildingSF > 0 ? Math.round((cachedTotalSF / totalBuildingSF) * 100) : 0
-      const barPct   = totalBuildingSF > 0 ? Math.min((cachedTotalSF / totalBuildingSF) * 100, 100) : 0
+      const rectSF   = activeRectSF()
+      const liveSF   = Math.round(toSF(cachedLivePx) + rectSF)
+      const totalSF  = Math.round(cachedTotalSF + rectSF)
+      const totalPct = totalBuildingSF > 0 ? Math.round(((cachedTotalSF + rectSF) / totalBuildingSF) * 100) : 0
+      const barPct   = totalBuildingSF > 0 ? Math.min(((cachedTotalSF + rectSF) / totalBuildingSF) * 100, 100) : 0
       if (hdrSessionRef.current)      hdrSessionRef.current.textContent      = liveSF.toLocaleString()
       if (hdrTotalRef.current)        hdrTotalRef.current.textContent        = totalSF.toLocaleString()
       if (hdrPctRef.current)          hdrPctRef.current.textContent          = totalBuildingSF > 0 ? totalPct + '%' : '–'
@@ -981,12 +1165,17 @@ export default function Canvas() {
 
     // ── TOOLS ─────────────────────────────────────────────────────────────────
     function setTool(t) {
+      // Leaving the rect tool (or switching to a different one while a shape
+      // is still active) bakes it into the highlight layer so it isn't lost.
+      if (tool === 'rect' && t !== 'rect' && activeRect) bakeActiveRect()
       if (tool !== 'erase' && t !== 'erase' && t !== 'count') prevTool = t
       tool = t
       if (btnHlRef.current)    btnHlRef.current.className    = 'ct-tbtn' + (t === 'highlight' ? ' t-hl' : '')
       if (btnPenRef.current)   btnPenRef.current.className   = 'ct-tbtn' + (t === 'pen'       ? ' t-pen' : '')
       if (btnErRef.current)    btnErRef.current.className    = 'ct-tbtn' + (t === 'erase'     ? ' t-er' : '')
       if (btnCountRef.current) btnCountRef.current.className = 'ct-tbtn' + (t === 'count'     ? ' t-count' : '')
+      if (btnRectRef.current)  btnRectRef.current.className  = 'ct-tbtn' + (t === 'rect'      ? ' t-rect' : '')
+      if (t !== 'rect') drawCtx.clearRect(0, 0, cW, cH)
     }
 
     function updateBrush() {
@@ -1024,6 +1213,7 @@ export default function Canvas() {
     // ── SESSIONS ─────────────────────────────────────────────────────────────
     async function saveSession() {
       if (!activePage) { showToast('No floor plan loaded', true); return }
+      if (activeRect) bakeActiveRect()
       ensureLive()
 
       const hd  = liveHlCtx.getImageData(0, 0, liveHlCanvas.width, liveHlCanvas.height).data
@@ -1403,6 +1593,7 @@ export default function Canvas() {
     function startPaintEdit(forceCountTool = false) {
       if (!editTarget) return
       const {s} = editTarget
+      activeRect = null; rectHandle = null; drawCtx.clearRect(0, 0, cW, cH)
       closeEditModal(); editingSession = true; ensureLive()
       // Hide session first so count markers don't double during load
       s._hidden = true; invalidateSessions()
@@ -1440,6 +1631,7 @@ export default function Canvas() {
 
     function cancelSessionEdit() {
       if (!editTarget) return
+      activeRect = null; rectHandle = null; drawCtx.clearRect(0, 0, cW, cH)
       editTarget.s._hidden = false; editingSession = false; editTarget = null
       ensureLive()
       liveHlCtx.clearRect(0, 0, liveHlCanvas.width, liveHlCanvas.height)
@@ -1451,6 +1643,7 @@ export default function Canvas() {
 
     function commitSessionEdit() {
       if (!editTarget) return
+      if (activeRect) bakeActiveRect()
       const {s} = editTarget
       const newHL  = document.createElement('canvas')
       newHL.width  = liveHlCanvas.width;  newHL.height = liveHlCanvas.height
@@ -1556,7 +1749,7 @@ export default function Canvas() {
     }
     function updateProgressBar() {
       const target = todayTarget
-      const total  = cachedTodaySF  // all sessions + current unsaved work
+      const total  = cachedTodaySF + activeRectSF()  // all sessions + current unsaved work
       const pct = target > 0 ? Math.min((total / target) * 100, 100) : 0
       if (progressFillRef.current)  { progressFillRef.current.style.width = pct + '%'; progressFillRef.current.classList.toggle('over', total > target && target > 0) }
       if (totalSFsbRef.current)     totalSFsbRef.current.textContent     = Math.round(total).toLocaleString()
@@ -2261,7 +2454,14 @@ export default function Canvas() {
     drawEl.addEventListener('gesturestart', onGesturePrevent)
     drawEl.addEventListener('gesturechange', onGesturePrevent)
     window.addEventListener('mouseup', onUp)
-    window.addEventListener('keydown', e => { if (e.key === 'Escape' && calibrating) cancelCalib() })
+    window.addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return
+      if (calibrating) { cancelCalib(); return }
+      if (tool === 'rect' && activeRect) {
+        activeRect = null; rectHandle = null
+        drawActiveRectPreview(); updateSFDisplay(); updateUnsaved(checkHasLiveContent())
+      }
+    })
     window.addEventListener('resize', onResize)
     document.addEventListener('click', e => {
       if (ctxMenuRef.current?.style.display === 'block' && !ctxMenuRef.current.contains(e.target)) closeCtxMenu()
@@ -2425,7 +2625,10 @@ export default function Canvas() {
               <div ref={btnHlRef}    className="ct-tbtn t-hl" onClick={() => api.current.setTool?.('highlight')}>Highlight</div>
               <div ref={btnPenRef}   className="ct-tbtn"      onClick={() => api.current.setTool?.('pen')}>Pen</div>
               <div ref={btnErRef}    className="ct-tbtn"      onClick={() => api.current.setTool?.('erase')}>Erase</div>
-              <div ref={btnCountRef} className="ct-tbtn"      onClick={() => api.current.setTool?.('count')}>Count</div>
+            </div>
+            <div className="ct-tool-row">
+              <div ref={btnCountRef} className="ct-tbtn" onClick={() => api.current.setTool?.('count')}>Count</div>
+              <div ref={btnRectRef}  className="ct-tbtn" onClick={() => api.current.setTool?.('rect')}>Rectangle</div>
             </div>
             <div className="ct-sb-ttl">Brush Size</div>
             <div className="ct-brush-row">
