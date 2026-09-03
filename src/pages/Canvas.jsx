@@ -100,6 +100,7 @@ export default function Canvas() {
   // save session modal
   const saveModalRef     = useRef(null)
   const saveNameRef      = useRef(null)
+  const saveDateRef      = useRef(null)
   const saveCrewRef      = useRef(null)
   const saveHoursRef     = useRef(null)
   // history modal
@@ -1236,6 +1237,7 @@ export default function Canvas() {
     function openSaveModal() {
       const userName = userProfile?.full_name || user.email?.split('@')[0] || 'Session'
       if (saveNameRef.current)  saveNameRef.current.value  = userName
+      if (saveDateRef.current)  saveDateRef.current.value  = getCurrentDate()
       if (saveCrewRef.current)  saveCrewRef.current.value  = ''
       if (saveHoursRef.current) saveHoursRef.current.value = ''
       if (saveModalRef.current) saveModalRef.current.classList.add('open')
@@ -1258,7 +1260,7 @@ export default function Canvas() {
 
       const sf   = toSF(countPx(liveHlCanvas))
       const countTotal = liveCountMarkers.length
-      const date = getCurrentDate()
+      const date = saveDateRef.current?.value || getCurrentDate()
       const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})
 
       // Snapshot live canvases
@@ -2774,6 +2776,10 @@ export default function Canvas() {
             <label className="ct-modal-lbl">Session Name</label>
             <input ref={saveNameRef} className="ct-modal-input" type="text" placeholder="e.g. Zone A – Morning"
               onKeyDown={e => { if (e.key === 'Enter') api.current.confirmSaveSession?.() }} />
+          </div>
+          <div className="ct-modal-field">
+            <label className="ct-modal-lbl">Date Performed</label>
+            <input ref={saveDateRef} className="ct-modal-input" type="date" />
           </div>
           <div className="ct-modal-field">
             <label className="ct-modal-lbl">Crew Size (optional)</label>
