@@ -1227,6 +1227,12 @@ export default function Canvas() {
     // Apple Pencil fires touch events too; Safari's Touch.touchType ('stylus' vs
     // 'direct') is what lets us tell it apart from a finger for palm rejection.
     let lastTouchPt = null, touchPainting = false
+    // Count tool: a second finger landing to start a pinch/pan fires its own
+    // single-touch touchstart first (the first finger touching down before
+    // the second one lands), which places a marker — this flags that so the
+    // 2-finger handler below can undo it, mirroring how touchPainting already
+    // gets undone for the other tools.
+    let touchJustPlacedMarker = false
     let pinchLastDist = 0, pinchLastMid = null
     const MAX_ZOOM = (isSafari || isIPad) ? 3.0 : 10.0
     const MIN_ZOOM = 0.1
@@ -1300,9 +1306,11 @@ export default function Canvas() {
       e.preventDefault(); if (!activePage) return
       const stylusTouch = findStylusTouch(e.touches)
       if (e.touches.length === 2 && !stylusTouch) {
-        // A second finger landed — undo the stray dot the first touch may have
-        // just painted, then switch to two-finger pan/pinch-zoom.
+        // A second finger landed — undo the stray dot (or count marker) the
+        // first touch may have just placed, then switch to two-finger
+        // pan/pinch-zoom.
         if (touchPainting) undoLast()
+        if (touchJustPlacedMarker) { undoLast(); touchJustPlacedMarker = false }
         touchPainting = false; lastTouchPt = null; rectHandle = null
         polyDragMode = null; polyVertexIdx = null
         const r = drawEl.getBoundingClientRect()
@@ -1333,6 +1341,7 @@ export default function Canvas() {
         stylusTapStartTime = now
         stylusTapStartPos = {x: pos.x, y: pos.y}
       }
+      touchJustPlacedMarker = false
       // See onDown — solo view is a static snapshot; leaving it active while
       // drawing/placing markers hides everything you do until it's cleared.
       if (soloSession) { soloSession = null; renderSessions() }
@@ -1396,7 +1405,7 @@ export default function Canvas() {
           liveCountMarkers.forEach((m, i) => m.num = i + 1)
           drawCountLayer(); updateUnsaved(true); return
         }
-        placeCountMarker(pos.x, pos.y); return
+        placeCountMarker(pos.x, pos.y); touchJustPlacedMarker = true; return
       }
       touchPainting = true; lastTouchPt = null
       undoStack.push({
