@@ -441,11 +441,19 @@ export default function Canvas() {
 
     function resetView() {
       if (!activePage) return
-      const img = activePage.image
       const currentW = wrap.clientWidth
       const currentH = wrap.clientHeight
       cW = currentW
       cH = currentH
+      // Tiled iPad pages: OpenSeadragon owns the actual rendered viewport, so
+      // mutating activePage.zoom/.pan directly here (like the non-tiled path
+      // below) only moves the overlay layers — markers, highlights — while
+      // OSD's own rendering of the plan stays exactly where it was. Driving
+      // OSD's own "fit to screen" instead keeps them in sync, the same way
+      // zoomAtScreenPoint/panByScreenDelta already do for every other
+      // navigation action.
+      if (osdViewer) { osdViewer.viewport.goHome(true); return }
+      const img = activePage.image
       const z = Math.min(currentW / img.width, currentH / img.height) * 0.95
       activePage.zoom = z
       activePage.pan = {
