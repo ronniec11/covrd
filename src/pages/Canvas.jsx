@@ -724,6 +724,13 @@ export default function Canvas() {
     function drawActivePolyPreview(cursorPos) {
       drawCtx.clearRect(0, 0, cW, cH)
       if (!activePoly || !activePage || activePoly.points.length === 0) return
+      // A single placed point with no live rubber-band line (a static
+      // redraw during zoom/pan, not an active mouse-move) has nothing real
+      // to show yet — same "don't render a stray marker with zero real
+      // content" fix already applied to the rectangle tool. Once there's a
+      // second point (a real line exists) or a live cursor position to
+      // preview toward, it always renders.
+      if (activePoly.points.length === 1 && !activePoly.closed && !cursorPos) return
       const z = activePage.zoom, p = activePage.pan
       const screenPts = activePoly.points.map(pt => ({x: pt.x * z + p.x, y: pt.y * z + p.y}))
 
@@ -3126,9 +3133,9 @@ export default function Canvas() {
           <div className="ct-sb-sec">
             <div className="ct-sb-ttl">Tool</div>
             <div className="ct-tool-row">
+              <div ref={btnHlRef}    className="ct-tbtn"        onClick={() => api.current.setTool?.('highlight')}>Highlight</div>
               <div ref={btnRectRef}  className="ct-tbtn t-rect" onClick={() => api.current.setTool?.('rect')}>Rectangle</div>
               <div ref={btnPolyRef}  className="ct-tbtn"        onClick={() => api.current.setTool?.('poly')}>Polygon</div>
-              <div ref={btnHlRef}    className="ct-tbtn"        onClick={() => api.current.setTool?.('highlight')}>Highlight</div>
             </div>
             <div className="ct-tool-row">
               <div ref={btnErRef}    className="ct-tbtn" onClick={() => api.current.setTool?.('erase')}>Erase</div>
