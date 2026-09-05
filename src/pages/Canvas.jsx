@@ -717,7 +717,12 @@ export default function Canvas() {
             if (pt.x >= activeRect.minX && pt.x <= activeRect.maxX && pt.y >= activeRect.minY && pt.y <= activeRect.maxY) {
               rectHandle = 'move'; rectMoveStart = pt; rectMoveOrig = {...activeRect}; return
             }
+            // Clicking outside the active shape just finalizes it — that's
+            // a deliberate "done adjusting" action, not the start of a new
+            // rectangle, so an ordinary click-off doesn't leave a stray
+            // sliver from the small pointer drift a real click always has.
             bakeActiveRect()
+            return
           }
           activeRect = {minX: pt.x, minY: pt.y, maxX: pt.x, maxY: pt.y}
           rectFixed = {x: pt.x, y: pt.y}
@@ -989,7 +994,10 @@ export default function Canvas() {
           if (pt.x >= activeRect.minX && pt.x <= activeRect.maxX && pt.y >= activeRect.minY && pt.y <= activeRect.maxY) {
             rectHandle = 'move'; rectMoveStart = pt; rectMoveOrig = {...activeRect}; return
           }
+          // See onDown — tapping outside the active shape finalizes it
+          // rather than starting a new one on the same tap.
           bakeActiveRect()
+          return
         }
         activeRect = {minX: pt.x, minY: pt.y, maxX: pt.x, maxY: pt.y}
         rectFixed = {x: pt.x, y: pt.y}
