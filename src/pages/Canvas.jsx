@@ -217,10 +217,21 @@ export default function Canvas() {
     function invalidateSessions() { sessionsValid = false }
 
     function rebuildSessionsCache() {
-      if (!activePage || !activePage.image || sessionsValid) {
-        console.log('[Canvas] rebuildSessionsCache skipped - activePage:', !!activePage,
-          'image:', !!activePage?.image, 'valid:', sessionsValid)
+      if (!activePage || !activePage.image) return
+      // Belt-and-suspenders: if activePage.image's own dimensions ever end up
+      // different from the cache's (e.g. a race during load, or the tiled
+      // iPad placeholder's size settling after this cache was first built),
+      // force a rebuild even though sessionsValid says it's fine — a stale-
+      // sized cache is exactly what makes every session render shrunk into
+      // the top-left corner instead of over the actual floor plan.
+      const sizeStale = sessionsHL.width !== activePage.image.width || sessionsHL.height !== activePage.image.height
+      if (sessionsValid && !sizeStale) {
+        console.log('[Canvas] rebuildSessionsCache skipped - valid:', sessionsValid)
         return
+      }
+      if (sizeStale && sessionsValid) {
+        console.warn('[Canvas] sessionsHL size stale vs activePage.image — forcing rebuild:',
+          sessionsHL.width + 'x' + sessionsHL.height, 'vs', activePage.image.width + 'x' + activePage.image.height)
       }
       const img = activePage.image
       console.log('[Canvas] rebuilding sessions cache, count:', activePage.sessions.length, 'img:', img.width + 'x' + img.height)
@@ -234,17 +245,30 @@ export default function Canvas() {
       penc.clearRect(0, 0, img.width, img.height)
       activePage.sessions.forEach(s => {
         if (s._hidden || !s.hlCanvas || s.hlCanvas.width === 0) return
-        if (s.hlCanvas.width !== img.width || s.hlCanvas.height !== img.height) {
+        const mismatched = s.hlCanvas.width !== img.width || s.hlCanvas.height !== img.height
+        if (mismatched) {
           console.warn('[Canvas] Session hlCanvas size mismatch vs page image:', s.id,
-            s.hlCanvas.width + 'x' + s.hlCanvas.height, 'vs', img.width + 'x' + img.height)
+            s.hlCanvas.width + 'x' + s.hlCanvas.height, 'vs', img.width + 'x' + img.height, '— scaling to fit')
         }
         console.log('[Canvas] Drawing session to cache:', s.name, s.color, s.hlCanvas.width, 'x', s.hlCanvas.height)
         const tinted = tintCanvas(s.hlCanvas, s.color)
-        if (!tinted) console.warn('[Canvas] tintCanvas returned null for session:', s.id)
-        if (tinted) hlc.drawImage(tinted, 0, 0)
+        if (!tinted) { console.warn('[Canvas] tintCanvas returned null for session:', s.id); return }
+        // Draw scaled to the CURRENT page size rather than at native
+        // resolution when they don't match — a session saved/decoded at a
+        // different size (a stale cache, a since-changed calibration, a
+        // race during load) would otherwise render shrunk into the
+        // top-left corner instead of proportionally covering the same
+        // area it was painted over.
+        if (mismatched) hlc.drawImage(tinted, 0, 0, img.width, img.height)
+        else hlc.drawImage(tinted, 0, 0)
       })
       activePage.sessions.forEach(s => {
-        if (s.penCanvas && !s._hidden) penc.drawImage(s.penCanvas, 0, 0)
+        if (!s.penCanvas || s._hidden) return
+        if (s.penCanvas.width !== img.width || s.penCanvas.height !== img.height) {
+          penc.drawImage(s.penCanvas, 0, 0, img.width, img.height)
+        } else {
+          penc.drawImage(s.penCanvas, 0, 0)
+        }
       })
       sessionsValid = true
     }
