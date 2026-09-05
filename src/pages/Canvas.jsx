@@ -1162,6 +1162,14 @@ export default function Canvas() {
     // directly there. These two helpers are the only place that decides
     // which path to take; every call site below just calls them.
     function zoomAtScreenPoint(f, sx, sy) {
+      // Count markers move under the cursor as the view zooms, but
+      // hoveredMarkerId only gets (re)computed on an actual pointer move —
+      // without this, a marker that was hovered before a scroll/pinch zoom
+      // keeps rendering "hovered" (its red/X highlight) even though it's no
+      // longer under the cursor, looking like it randomly pops up. Clearing
+      // it here and letting the next real pointer move re-evaluate fresh
+      // avoids that stale state.
+      if (hoveredMarkerId !== null) { hoveredMarkerId = null; drawCountLayer() }
       if (osdViewer) {
         const refPoint = osdViewer.viewport.pointFromPixel(new OpenSeadragon.Point(sx, sy), true)
         osdViewer.viewport.zoomBy(f, refPoint, true)
