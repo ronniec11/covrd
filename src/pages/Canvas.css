@@ -113,6 +113,7 @@
 .ct-tbtn.t-er { background: #f87171; border-color: #f87171; color: #000; }
 .ct-tbtn.t-count { background: #4ade80; border-color: #4ade80; color: #000; }
 .ct-tbtn.t-rect { background: #a78bfa; border-color: #a78bfa; color: #000; }
+.ct-tbtn.t-poly { background: #06b6d4; border-color: #06b6d4; color: #000; }
 .ct-brush-row { display: flex; align-items: center; gap: 7px; }
 .ct-blbl { font-size: 11px; color: #7a7870; min-width: 30px; }
 .ct-brush-range { flex: 1; accent-color: #4ade80; cursor: pointer; }

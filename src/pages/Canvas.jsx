@@ -70,6 +70,7 @@ export default function Canvas() {
   const btnErRef         = useRef(null)
   const btnCountRef      = useRef(null)   // count tool button
   const btnRectRef       = useRef(null)   // rectangle tool button
+  const btnPolyRef       = useRef(null)   // polygon tool button
   const brushRangeRef    = useRef(null)
   const brushValRef      = useRef(null)
   const colorGridRef     = useRef(null)
@@ -194,6 +195,18 @@ export default function Canvas() {
     let rectFixed     = null   // image-space anchor point for a corner drag
     let rectMoveStart = null   // image-space pointer position when a move-drag started
     let rectMoveOrig  = null   // activeRect snapshot when a move-drag started
+
+    // Polygon tool — click to place each vertex (image-space); once closed
+    // (either by clicking back on the first vertex, or by the pointer
+    // leaving the canvas with >=3 points placed) it becomes a live,
+    // adjustable shape exactly like the rectangle: drag a vertex handle to
+    // reshape it, drag inside to move the whole thing, click outside to
+    // bake it into liveHlCanvas.
+    let activePoly    = null   // {points: [{x,y}, ...], closed: boolean} | null
+    let polyDragMode  = null   // 'vertex' | 'move' | null
+    let polyVertexIdx = null   // index into activePoly.points being dragged, when polyDragMode === 'vertex'
+    let polyMoveStart = null   // image-space pointer position when a move-drag started
+    let polyMoveOrig  = null   // activePoly.points snapshot when a move-drag started
 
     // Session composite cache
     let sessionsHL    = document.createElement('canvas')
@@ -435,10 +448,12 @@ export default function Canvas() {
       }
 
       redrawHL(); redrawPen(); drawCountLayer()
-      // An active (not-yet-baked) rectangle stays adjustable across pan/zoom
-      // (mouse wheel, pinch, or the OSD viewport on tiled iPad pages), so its
-      // preview needs to track the same transform as everything else here.
+      // An active (not-yet-baked) rectangle/polygon stays adjustable across
+      // pan/zoom (mouse wheel, pinch, or the OSD viewport on tiled iPad
+      // pages), so its preview needs to track the same transform as
+      // everything else here.
       if (activeRect) drawActiveRectPreview()
+      if (activePoly) drawActivePolyPreview()
     }
 
     function redrawHL() {
@@ -644,6 +659,125 @@ export default function Canvas() {
       if (checkHasLiveContent()) updateUnsaved(true)
     }
 
+    // ── POLYGON TOOL ──────────────────────────────────────────────────────────
+    function polygonAreaPx(points) {
+      let area = 0
+      for (let i = 0; i < points.length; i++) {
+        const j = (i + 1) % points.length
+        area += points[i].x * points[j].y - points[j].x * points[i].y
+      }
+      return Math.abs(area) / 2
+    }
+
+    function pointInPolygon(pt, points) {
+      let inside = false
+      for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+        const xi = points[i].x, yi = points[i].y
+        const xj = points[j].x, yj = points[j].y
+        const intersect = ((yi > pt.y) !== (yj > pt.y)) &&
+          (pt.x < (xj - xi) * (pt.y - yi) / (yj - yi) + xi)
+        if (intersect) inside = !inside
+      }
+      return inside
+    }
+
+    function hitPolyVertex(sx, sy) {
+      if (!activePoly || !activePage) return null
+      const z = activePage.zoom, p = activePage.pan
+      for (let i = 0; i < activePoly.points.length; i++) {
+        const hx = activePoly.points[i].x * z + p.x, hy = activePoly.points[i].y * z + p.y
+        if (Math.hypot(sx - hx, sy - hy) < 16) return i
+      }
+      return null
+    }
+
+    function drawActivePolyPreview(cursorPos) {
+      drawCtx.clearRect(0, 0, cW, cH)
+      if (!activePoly || !activePage || activePoly.points.length === 0) return
+      const z = activePage.zoom, p = activePage.pan
+      const screenPts = activePoly.points.map(pt => ({x: pt.x * z + p.x, y: pt.y * z + p.y}))
+
+      drawCtx.save()
+      drawCtx.beginPath()
+      drawCtx.moveTo(screenPts[0].x, screenPts[0].y)
+      for (let i = 1; i < screenPts.length; i++) drawCtx.lineTo(screenPts[i].x, screenPts[i].y)
+      if (activePoly.closed) {
+        drawCtx.closePath()
+        drawCtx.fillStyle = activeColor
+        drawCtx.globalAlpha = 0.30
+        drawCtx.fill()
+        drawCtx.globalAlpha = 1
+      } else if (cursorPos) {
+        // Rubber-band preview of the segment that would be added next.
+        drawCtx.lineTo(cursorPos.x, cursorPos.y)
+      }
+      drawCtx.strokeStyle = activeColor
+      drawCtx.lineWidth = 2
+      drawCtx.setLineDash(activePoly.closed ? [] : [6, 4])
+      drawCtx.stroke()
+      drawCtx.setLineDash([])
+      drawCtx.restore()
+
+      const HR = 6
+      screenPts.forEach((sp, i) => {
+        // The first vertex is drawn larger while still placing points — it's
+        // the "click here to close" target once there are enough points.
+        const isCloseTarget = !activePoly.closed && i === 0 && activePoly.points.length >= 3
+        const r = isCloseTarget ? HR + 2 : HR
+        drawCtx.fillStyle = '#fff'
+        drawCtx.fillRect(sp.x - r, sp.y - r, r * 2, r * 2)
+        drawCtx.strokeStyle = activeColor
+        drawCtx.lineWidth = 2
+        drawCtx.strokeRect(sp.x - r, sp.y - r, r * 2, r * 2)
+      })
+
+      if (activePoly.closed && activePoly.points.length >= 3) {
+        const polySF = Math.round(toSF(polygonAreaPx(activePoly.points)))
+        const label = polySF.toLocaleString() + ' SF'
+        const minX = Math.min(...screenPts.map(sp => sp.x))
+        const minY = Math.min(...screenPts.map(sp => sp.y))
+        drawCtx.save()
+        drawCtx.font = 'bold 12px system-ui,sans-serif'
+        const tw = drawCtx.measureText(label).width
+        drawCtx.fillStyle = 'rgba(0,0,0,0.75)'
+        drawCtx.fillRect(minX - 4, minY - 24, tw + 8, 18)
+        drawCtx.fillStyle = '#fff'
+        drawCtx.fillText(label, minX, minY - 10)
+        drawCtx.restore()
+      }
+    }
+
+    // Rasterizes the closed polygon into liveHlCanvas — same layer/undo/SF/
+    // clip semantics as bakeActiveRect. Discards silently if it never made
+    // it to a valid, closed 3+-point shape.
+    function bakePolygon() {
+      if (!activePoly) return
+      if (!activePoly.closed || activePoly.points.length < 3) {
+        activePoly = null; polyDragMode = null; polyVertexIdx = null
+        drawActivePolyPreview(); return
+      }
+      undoStack.push({
+        hl:  liveHlCtx.getImageData(0, 0, liveHlCanvas.width, liveHlCanvas.height),
+        pen: livePenCtx.getImageData(0, 0, livePenCanvas.width, livePenCanvas.height),
+        cnt: [...liveCountMarkers],
+      })
+      if (undoStack.length > MAX_UNDO) undoStack.shift()
+      liveHlCtx.save()
+      liveHlCtx.globalCompositeOperation = 'source-over'
+      liveHlCtx.fillStyle = activeColor
+      liveHlCtx.beginPath()
+      liveHlCtx.moveTo(activePoly.points[0].x, activePoly.points[0].y)
+      for (let i = 1; i < activePoly.points.length; i++) liveHlCtx.lineTo(activePoly.points[i].x, activePoly.points[i].y)
+      liveHlCtx.closePath()
+      liveHlCtx.fill()
+      liveHlCtx.restore()
+      clipLiveHLAgainstSessions()
+      activePoly = null; polyDragMode = null; polyVertexIdx = null
+      drawActivePolyPreview()
+      redrawAll(); updateSF()
+      if (checkHasLiveContent()) updateUnsaved(true)
+    }
+
     function tintCanvas(src, hexColor) {
       try {
         if (!src || !hexColor || src.width === 0 || src.height === 0) return null
@@ -679,6 +813,7 @@ export default function Canvas() {
     function checkHasLiveContent() {
       if (liveCountMarkers.length > 0) return true
       if (activeRect && (activeRect.maxX - activeRect.minX) >= 2 && (activeRect.maxY - activeRect.minY) >= 2) return true
+      if (activePoly && activePoly.points.length > 0) return true
       const hd = liveHlCtx.getImageData(0, 0, liveHlCanvas.width, liveHlCanvas.height).data
       for (let i = 3; i < hd.length; i += 4) if (hd[i] > 10) return true
       return false
@@ -748,6 +883,39 @@ export default function Canvas() {
           drawActiveRectPreview(); updateSFDisplay()
           return
         }
+        if (tool === 'poly') {
+          const pt = s2i(pos.x, pos.y)
+          if (activePoly && activePoly.closed) {
+            const vIdx = hitPolyVertex(pos.x, pos.y)
+            if (vIdx !== null) { polyDragMode = 'vertex'; polyVertexIdx = vIdx; return }
+            if (pointInPolygon(pt, activePoly.points)) {
+              polyDragMode = 'move'; polyMoveStart = pt; polyMoveOrig = activePoly.points.map(p => ({...p})); return
+            }
+            // Same "click outside finalizes, doesn't start a new one" rule as rect.
+            bakePolygon()
+            return
+          }
+          if (activePoly && !activePoly.closed) {
+            // Clicking back on the first vertex closes the loop instead of
+            // adding a duplicate point on top of it.
+            if (activePoly.points.length >= 3) {
+              const first = activePoly.points[0]
+              const sx = first.x * activePage.zoom + activePage.pan.x
+              const sy = first.y * activePage.zoom + activePage.pan.y
+              if (Math.hypot(pos.x - sx, pos.y - sy) < 16) {
+                activePoly.closed = true
+                drawActivePolyPreview(); updateSFDisplay(); updateUnsaved(true)
+                return
+              }
+            }
+            activePoly.points.push(pt)
+            drawActivePolyPreview(); updateSFDisplay(); updateUnsaved(true)
+            return
+          }
+          activePoly = {points: [pt], closed: false}
+          drawActivePolyPreview(); updateUnsaved(true)
+          return
+        }
         if (tool === 'count') {
           const hit = liveCountMarkers.findIndex(m => {
             const sx = m.x * activePage.zoom + activePage.pan.x
@@ -808,6 +976,23 @@ export default function Canvas() {
             drawEl.style.cursor = inside ? 'move' : 'crosshair'
           }
         }
+      } else if (tool === 'poly') {
+        ring.style.display = 'none'
+        if (activePage && !polyDragMode) {
+          if (activePoly && activePoly.closed) {
+            const vIdx = hitPolyVertex(pos.x, pos.y)
+            if (vIdx !== null) {
+              drawEl.style.cursor = 'pointer'
+            } else {
+              const pt = s2i(pos.x, pos.y)
+              drawEl.style.cursor = pointInPolygon(pt, activePoly.points) ? 'move' : 'crosshair'
+            }
+          } else {
+            drawEl.style.cursor = 'crosshair'
+            // Rubber-band preview of the next segment while still placing points.
+            if (activePoly) drawActivePolyPreview(pos)
+          }
+        }
       } else {
         ring.style.width  = brushSize * 2 + 'px'
         ring.style.height = brushSize * 2 + 'px'
@@ -836,6 +1021,17 @@ export default function Canvas() {
         drawActiveRectPreview(); updateSFDisplay(); updateUnsaved(checkHasLiveContent())
         return
       }
+      if (tool === 'poly' && polyDragMode) {
+        const pt = s2i(pos.x, pos.y)
+        if (polyDragMode === 'move') {
+          const dx = pt.x - polyMoveStart.x, dy = pt.y - polyMoveStart.y
+          activePoly.points = polyMoveOrig.map(p => ({x: p.x + dx, y: p.y + dy}))
+        } else {
+          activePoly.points[polyVertexIdx] = pt
+        }
+        drawActivePolyPreview(); updateSFDisplay(); updateUnsaved(checkHasLiveContent())
+        return
+      }
       if (isPainting) {
         const pt = s2i(pos.x, pos.y)
         doPaint(pt.x, pt.y, lastPenPt); lastPenPt = pt
@@ -844,6 +1040,7 @@ export default function Canvas() {
 
     function onUp() {
       rectHandle = null
+      polyDragMode = null; polyVertexIdx = null
       if (isPainting) {
         isPainting = false; lastPenPt = null
         cancelAnimationFrame(rafId); rafId = 0
@@ -857,10 +1054,22 @@ export default function Canvas() {
     function onLeave() {
       if (cursorRingRef.current) cursorRingRef.current.style.display = 'none'
       drawCtx.clearRect(0, 0, cW, cH)
-      // An active rectangle lives on this same canvas — the pointer leaving
-      // to click a sidebar color/tool shouldn't hide it, and redrawing here
-      // also picks up any color change made while it was hovering the sidebar.
+      // An active rectangle/polygon lives on this same canvas — the pointer
+      // leaving to click a sidebar color/tool shouldn't hide it, and
+      // redrawing here also picks up any color change made while hovering
+      // the sidebar.
       if (activeRect) drawActiveRectPreview()
+      if (activePoly) {
+        // Still placing points and the pointer left the canvas entirely —
+        // treat that as "done placing points" per the user's request:
+        // close it if it's a valid shape already, else there's nothing
+        // sensible to keep (can't close a 1-2 point line into an area).
+        if (!activePoly.closed) {
+          if (activePoly.points.length >= 3) activePoly.closed = true
+          else activePoly = null
+        }
+        drawActivePolyPreview()
+      }
       if (hoveredMarkerId !== null) { hoveredMarkerId = null; drawCountLayer() }
     }
 
@@ -1003,6 +1212,20 @@ export default function Canvas() {
         }
         return
       }
+      if (tool === 'poly') {
+        if (activePoly && !activePoly.closed) {
+          // tap-1 started or extended the in-progress polygon — remove
+          // just the point it added.
+          activePoly.points.pop()
+          if (activePoly.points.length === 0) activePoly = null
+          drawActivePolyPreview(); updateSFDisplay()
+        } else if (!activePoly) {
+          // activePoly can only be null here if tap-1 was a "click outside"
+          // that just baked a closed polygon (see onTouchStart) — undo that.
+          undoLast()
+        }
+        return
+      }
       undoLast()
     }
 
@@ -1028,6 +1251,7 @@ export default function Canvas() {
         // just painted, then switch to two-finger pan/pinch-zoom.
         if (touchPainting) undoLast()
         touchPainting = false; lastTouchPt = null; rectHandle = null
+        polyDragMode = null; polyVertexIdx = null
         const r = drawEl.getBoundingClientRect()
         const t0 = e.touches[0], t1 = e.touches[1]
         const mx = ((t0.clientX + t1.clientX) / 2) - r.left
@@ -1076,6 +1300,36 @@ export default function Canvas() {
         rectFixed = {x: pt.x, y: pt.y}
         rectHandle = 'se'
         drawActiveRectPreview(); updateSFDisplay()
+        return
+      }
+      if (tool === 'poly') {
+        const pt = s2i(pos.x, pos.y)
+        if (activePoly && activePoly.closed) {
+          const vIdx = hitPolyVertex(pos.x, pos.y)
+          if (vIdx !== null) { polyDragMode = 'vertex'; polyVertexIdx = vIdx; return }
+          if (pointInPolygon(pt, activePoly.points)) {
+            polyDragMode = 'move'; polyMoveStart = pt; polyMoveOrig = activePoly.points.map(p => ({...p})); return
+          }
+          bakePolygon()
+          return
+        }
+        if (activePoly && !activePoly.closed) {
+          if (activePoly.points.length >= 3) {
+            const first = activePoly.points[0]
+            const sx = first.x * activePage.zoom + activePage.pan.x
+            const sy = first.y * activePage.zoom + activePage.pan.y
+            if (Math.hypot(pos.x - sx, pos.y - sy) < 20) {  // slightly larger tap target for touch
+              activePoly.closed = true
+              drawActivePolyPreview(); updateSFDisplay(); updateUnsaved(true)
+              return
+            }
+          }
+          activePoly.points.push(pt)
+          drawActivePolyPreview(); updateSFDisplay(); updateUnsaved(true)
+          return
+        }
+        activePoly = {points: [pt], closed: false}
+        drawActivePolyPreview(); updateUnsaved(true)
         return
       }
       if (tool === 'count') {
@@ -1137,6 +1391,18 @@ export default function Canvas() {
         drawActiveRectPreview(); updateSFDisplay(); updateUnsaved(checkHasLiveContent())
         return
       }
+      if (tool === 'poly' && polyDragMode) {
+        const pos = getTouchPos(e)
+        const pt = s2i(pos.x, pos.y)
+        if (polyDragMode === 'move') {
+          const dx = pt.x - polyMoveStart.x, dy = pt.y - polyMoveStart.y
+          activePoly.points = polyMoveOrig.map(p => ({x: p.x + dx, y: p.y + dy}))
+        } else {
+          activePoly.points[polyVertexIdx] = pt
+        }
+        drawActivePolyPreview(); updateSFDisplay(); updateUnsaved(checkHasLiveContent())
+        return
+      }
       if (!touchPainting) return
       const pos = getTouchPos(e)
       const pt = s2i(pos.x, pos.y)
@@ -1161,6 +1427,7 @@ export default function Canvas() {
       touchPainting = false; lastTouchPt = null
       pinchLastDist = 0; pinchLastMid = null
       rectHandle = null
+      polyDragMode = null; polyVertexIdx = null
       cancelAnimationFrame(rafId); rafId = 0
       clipLiveHLAgainstSessions()
       redrawAll(); updateSF()
@@ -1253,6 +1520,13 @@ export default function Canvas() {
       return toSF(px)
     }
 
+    // SF of the active (not-yet-baked) polygon, if any — shoelace formula,
+    // no pixel scan needed. Only meaningful once closed with 3+ points.
+    function activePolySF() {
+      if (!activePoly || !activePoly.closed || activePoly.points.length < 3) return 0
+      return toSF(polygonAreaPx(activePoly.points))
+    }
+
     function updateSF() {
       if (!activePage) { if (hdrSessionRef.current) hdrSessionRef.current.textContent = '0'; if (hdrTotalRef.current) hdrTotalRef.current.textContent = '0'; return }
       cachedLivePx = countPx(liveHlCanvas)
@@ -1277,7 +1551,7 @@ export default function Canvas() {
     // full countPx() rescan — cheap enough to run on every pointer move.
     function updateSFDisplay() {
       if (!activePage) return
-      const rectSF   = activeRectSF()
+      const rectSF   = activeRectSF() + activePolySF()
       const liveSF   = Math.round(toSF(cachedLivePx) + rectSF)
       const totalSF  = Math.round(cachedTotalSF + rectSF)
       const totalPct = totalBuildingSF > 0 ? Math.round(((cachedTotalSF + rectSF) / totalBuildingSF) * 100) : 0
@@ -1291,9 +1565,10 @@ export default function Canvas() {
 
     // ── TOOLS ─────────────────────────────────────────────────────────────────
     function setTool(t) {
-      // Leaving the rect tool (or switching to a different one while a shape
-      // is still active) bakes it into the highlight layer so it isn't lost.
+      // Leaving the rect/poly tool (or switching to a different one while a
+      // shape is still active) bakes it into the highlight layer so it isn't lost.
       if (tool === 'rect' && t !== 'rect' && activeRect) bakeActiveRect()
+      if (tool === 'poly' && t !== 'poly' && activePoly) bakePolygon()
       if (tool !== 'erase' && t !== 'erase' && t !== 'count') prevTool = t
       tool = t
       if (btnHlRef.current)    btnHlRef.current.className    = 'ct-tbtn' + (t === 'highlight' ? ' t-hl' : '')
@@ -1301,7 +1576,8 @@ export default function Canvas() {
       if (btnErRef.current)    btnErRef.current.className    = 'ct-tbtn' + (t === 'erase'     ? ' t-er' : '')
       if (btnCountRef.current) btnCountRef.current.className = 'ct-tbtn' + (t === 'count'     ? ' t-count' : '')
       if (btnRectRef.current)  btnRectRef.current.className  = 'ct-tbtn' + (t === 'rect'      ? ' t-rect' : '')
-      if (t !== 'rect') drawCtx.clearRect(0, 0, cW, cH)
+      if (btnPolyRef.current)  btnPolyRef.current.className  = 'ct-tbtn' + (t === 'poly'      ? ' t-poly' : '')
+      if (t !== 'rect' && t !== 'poly') drawCtx.clearRect(0, 0, cW, cH)
     }
 
     function updateBrush() {
@@ -1315,9 +1591,10 @@ export default function Canvas() {
       const match = colorGridRef.current.querySelector(`[data-c="${hex}"]`)
       if (match) match.classList.add('sel')
       if (tool === 'erase') setTool(prevTool)
-      // Reflect the new color on an active (not-yet-baked) rectangle right
-      // away, rather than waiting for the pointer to re-enter the canvas.
+      // Reflect the new color on an active (not-yet-baked) rectangle/polygon
+      // right away, rather than waiting for the pointer to re-enter the canvas.
       if (activeRect) drawActiveRectPreview()
+      if (activePoly) drawActivePolyPreview()
     }
 
     // ── UNDO ─────────────────────────────────────────────────────────────────
@@ -1343,6 +1620,7 @@ export default function Canvas() {
     function saveSession() {
       if (!activePage) { showToast('No floor plan loaded', true); return }
       if (activeRect) bakeActiveRect()
+      if (activePoly) bakePolygon()
       ensureLive()
 
       const hd  = liveHlCtx.getImageData(0, 0, liveHlCanvas.width, liveHlCanvas.height).data
@@ -1766,7 +2044,9 @@ export default function Canvas() {
     function startPaintEdit(forceCountTool = false) {
       if (!editTarget) return
       const {s} = editTarget
-      activeRect = null; rectHandle = null; drawCtx.clearRect(0, 0, cW, cH)
+      activeRect = null; rectHandle = null
+      activePoly = null; polyDragMode = null; polyVertexIdx = null
+      drawCtx.clearRect(0, 0, cW, cH)
       closeEditModal(); editingSession = true; ensureLive()
       // Hide session first so count markers don't double during load
       s._hidden = true; invalidateSessions()
@@ -1818,7 +2098,9 @@ export default function Canvas() {
 
     function cancelSessionEdit() {
       if (!editTarget) return
-      activeRect = null; rectHandle = null; drawCtx.clearRect(0, 0, cW, cH)
+      activeRect = null; rectHandle = null
+      activePoly = null; polyDragMode = null; polyVertexIdx = null
+      drawCtx.clearRect(0, 0, cW, cH)
       editTarget.s._hidden = false; editingSession = false; editTarget = null
       ensureLive()
       liveHlCtx.clearRect(0, 0, liveHlCanvas.width, liveHlCanvas.height)
@@ -1831,6 +2113,7 @@ export default function Canvas() {
     function commitSessionEdit() {
       if (!editTarget) return
       if (activeRect) bakeActiveRect()
+      if (activePoly) bakePolygon()
       const {s} = editTarget
       const newHL  = document.createElement('canvas')
       newHL.width  = liveHlCanvas.width;  newHL.height = liveHlCanvas.height
@@ -1936,7 +2219,7 @@ export default function Canvas() {
     }
     function updateProgressBar() {
       const target = todayTarget
-      const total  = cachedTodaySF + activeRectSF()  // all sessions + current unsaved work
+      const total  = cachedTodaySF + activeRectSF() + activePolySF()  // all sessions + current unsaved work
       const pct = target > 0 ? Math.min((total / target) * 100, 100) : 0
       if (progressFillRef.current)  { progressFillRef.current.style.width = pct + '%'; progressFillRef.current.classList.toggle('over', total > target && target > 0) }
       if (totalSFsbRef.current)     totalSFsbRef.current.textContent     = Math.round(total).toLocaleString()
@@ -2651,6 +2934,10 @@ export default function Canvas() {
         activeRect = null; rectHandle = null
         drawActiveRectPreview(); updateSFDisplay(); updateUnsaved(checkHasLiveContent())
       }
+      if (tool === 'poly' && activePoly) {
+        activePoly = null; polyDragMode = null; polyVertexIdx = null
+        drawActivePolyPreview(); updateSFDisplay(); updateUnsaved(checkHasLiveContent())
+      }
     })
     window.addEventListener('resize', onResize)
     document.addEventListener('click', e => {
@@ -2810,10 +3097,11 @@ export default function Canvas() {
             <div className="ct-sb-ttl">Tool</div>
             <div className="ct-tool-row">
               <div ref={btnRectRef}  className="ct-tbtn t-rect" onClick={() => api.current.setTool?.('rect')}>Rectangle</div>
+              <div ref={btnPolyRef}  className="ct-tbtn"        onClick={() => api.current.setTool?.('poly')}>Polygon</div>
               <div ref={btnHlRef}    className="ct-tbtn"        onClick={() => api.current.setTool?.('highlight')}>Highlight</div>
-              <div ref={btnErRef}    className="ct-tbtn"        onClick={() => api.current.setTool?.('erase')}>Erase</div>
             </div>
             <div className="ct-tool-row">
+              <div ref={btnErRef}    className="ct-tbtn" onClick={() => api.current.setTool?.('erase')}>Erase</div>
               <div ref={btnCountRef} className="ct-tbtn" onClick={() => api.current.setTool?.('count')}>Count</div>
               <div ref={btnPenRef}   className="ct-tbtn" onClick={() => api.current.setTool?.('pen')}>Pen</div>
             </div>
