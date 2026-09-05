@@ -969,6 +969,43 @@ export default function Canvas() {
     const MAX_ZOOM = (isSafari || isIPad) ? 3.0 : 10.0
     const MIN_ZOOM = 0.1
 
+    // Pencil double-tap-to-erase: Apple Pencil's own barrel double-tap
+    // gesture (UIPencilInteraction) never reaches web content at all — Safari
+    // exposes no event for it — so this recognizes two quick, near-stationary
+    // taps of the Pencil TIP on the screen instead, as a substitute gesture.
+    // A tap always paints normally the instant it starts (no added latency);
+    // only once it lifts do we know it was short/still enough to be a "tap"
+    // rather than a stroke, and only once a SECOND qualifying tap starts
+    // nearby soon after do we retroactively undo the first tap's stray mark
+    // and toggle the tool — this is the same "undo what the first touch did
+    // once a second touch changes its meaning" pattern already used for the
+    // two-finger pan/pinch handoff above.
+    let stylusTapStartTime  = 0
+    let stylusTapStartPos   = null
+    let lastStylusTapEndTime = 0
+    let lastStylusTapEndPos  = null
+    const PENCIL_TAP_MAX_MS    = 200   // longer than this = a stroke, not a tap
+    const PENCIL_TAP_MAX_PX    = 12    // moved more than this = a stroke, not a tap
+    const PENCIL_DBLTAP_GAP_MS = 350   // max time between tap 1 lifting and tap 2 landing
+    const PENCIL_DBLTAP_GAP_PX = 30    // max distance between the two taps
+
+    // Discards whatever a soon-to-be-reclassified "first tap" just did, since
+    // it turned out to be part of a double-tap gesture rather than a real
+    // mark. Mirrors undoLast()'s own count-vs-canvas branching, plus a rect
+    // tool case undoLast() doesn't cover: a fresh rect isn't in the undo
+    // stack until it bakes, so a stray one-tap rect is discarded directly —
+    // but only if it's still the zero-size one this tap just created; a real
+    // rect the user was mid-adjusting (tapped a handle, no drag) is left alone.
+    function undoStrayTap() {
+      if (tool === 'rect') {
+        if (activeRect && (activeRect.maxX - activeRect.minX) < 2 && (activeRect.maxY - activeRect.minY) < 2) {
+          activeRect = null; rectHandle = null; drawActiveRectPreview(); updateSFDisplay()
+        }
+        return
+      }
+      undoLast()
+    }
+
     function findStylusTouch(touchList) {
       for (let i = 0; i < touchList.length; i++) {
         if (touchList[i].touchType === 'stylus') return touchList[i]
@@ -1002,6 +1039,23 @@ export default function Canvas() {
       // Single touch, or a pencil touch (with a resting palm alongside it).
       const pos = getTouchPos(e)
       if (calibrating) { handleCalibClick(pos.x, pos.y); return }
+      if (stylusTouch) {
+        const now = Date.now()
+        if (lastStylusTapEndPos &&
+            (now - lastStylusTapEndTime) < PENCIL_DBLTAP_GAP_MS &&
+            Math.hypot(pos.x - lastStylusTapEndPos.x, pos.y - lastStylusTapEndPos.y) < PENCIL_DBLTAP_GAP_PX) {
+          // Second tap confirmed — this and the first tap were a double-tap,
+          // not two intentional marks. Undo the first tap's stray mark and
+          // toggle Erase, and this tap itself paints nothing.
+          undoStrayTap()
+          setTool(tool === 'erase' ? prevTool : 'erase')
+          lastStylusTapEndTime = 0; lastStylusTapEndPos = null
+          stylusTapStartTime = 0; stylusTapStartPos = null
+          return
+        }
+        stylusTapStartTime = now
+        stylusTapStartPos = {x: pos.x, y: pos.y}
+      }
       // See onDown — solo view is a static snapshot; leaving it active while
       // drawing/placing markers hides everything you do until it's cleared.
       if (soloSession) { soloSession = null; renderSessions() }
@@ -1091,6 +1145,19 @@ export default function Canvas() {
 
     function onTouchEnd(e) {
       e.preventDefault()
+      // Classify the just-lifted stylus touch as a "tap" (short + nearly
+      // stationary) or a real stroke, for the double-tap check in
+      // onTouchStart to compare the NEXT stylus touch against.
+      const endedStylus = stylusTapStartPos ? findStylusTouch(e.changedTouches) : null
+      if (endedStylus) {
+        const r = drawEl.getBoundingClientRect()
+        const endPos = {x: endedStylus.clientX - r.left, y: endedStylus.clientY - r.top}
+        const wasTap = (Date.now() - stylusTapStartTime) < PENCIL_TAP_MAX_MS &&
+          Math.hypot(endPos.x - stylusTapStartPos.x, endPos.y - stylusTapStartPos.y) < PENCIL_TAP_MAX_PX
+        if (wasTap) { lastStylusTapEndTime = Date.now(); lastStylusTapEndPos = endPos }
+        else { lastStylusTapEndTime = 0; lastStylusTapEndPos = null }
+        stylusTapStartTime = 0; stylusTapStartPos = null
+      }
       touchPainting = false; lastTouchPt = null
       pinchLastDist = 0; pinchLastMid = null
       rectHandle = null
