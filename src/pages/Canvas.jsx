@@ -600,6 +600,23 @@ export default function Canvas() {
       drawCtx.restore()
     }
 
+    // Keeps every markup independent — erases whatever part of the CURRENT
+    // live work (liveHlCanvas) falls on top of area already highlighted by
+    // OTHER, already-saved sessions on this page (sessionsHL), so the same
+    // physical square footage never gets counted toward more than one
+    // session's SF. sessionsHL never includes a session currently being
+    // "Paint More"-edited (it's hidden from the cache for the duration —
+    // see startPaintEdit), so re-touching that session's own existing area
+    // is unaffected; only overlap with everyone else's work is clipped.
+    function clipLiveHLAgainstSessions() {
+      rebuildSessionsCache()
+      if (!sessionsHL.width || !liveHlCanvas.width) return
+      liveHlCtx.save()
+      liveHlCtx.globalCompositeOperation = 'destination-out'
+      liveHlCtx.drawImage(sessionsHL, 0, 0)
+      liveHlCtx.restore()
+    }
+
     // Rasterizes the active rectangle into liveHlCanvas (same layer/undo/SF
     // semantics as a freehand highlight stroke) and clears the adjustable
     // shape state. Degenerate (near-zero-area) rects are discarded silently
@@ -620,6 +637,7 @@ export default function Canvas() {
       liveHlCtx.fillStyle = activeColor
       liveHlCtx.fillRect(activeRect.minX, activeRect.minY, w, h)
       liveHlCtx.restore()
+      clipLiveHLAgainstSessions()
       activeRect = null; rectHandle = null
       drawActiveRectPreview()
       redrawAll(); updateSF()
@@ -829,6 +847,7 @@ export default function Canvas() {
       if (isPainting) {
         isPainting = false; lastPenPt = null
         cancelAnimationFrame(rafId); rafId = 0
+        clipLiveHLAgainstSessions()
         redrawAll(); updateSF()
         if (checkHasLiveContent()) updateUnsaved(true)
       }
@@ -1076,6 +1095,7 @@ export default function Canvas() {
       pinchLastDist = 0; pinchLastMid = null
       rectHandle = null
       cancelAnimationFrame(rafId); rafId = 0
+      clipLiveHLAgainstSessions()
       redrawAll(); updateSF()
       if (checkHasLiveContent()) updateUnsaved(true)
     }
