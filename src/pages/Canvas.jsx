@@ -603,6 +603,12 @@ export default function Canvas() {
     function drawActiveRectPreview() {
       drawCtx.clearRect(0, 0, cW, cH)
       if (!activeRect || !activePage) return
+      // A fresh tap-without-drag creates a zero-size rect that stays around
+      // until it's dragged or discarded — don't show its outline/handles/SF
+      // label until it's actually been dragged to a real size, or it just
+      // sits there as a stray "0 SF" square (including reappearing on every
+      // zoom/pan redraw).
+      if (activeRect.maxX - activeRect.minX < 2 && activeRect.maxY - activeRect.minY < 2) return
       const z = activePage.zoom, p = activePage.pan
       const sx1 = activeRect.minX * z + p.x, sy1 = activeRect.minY * z + p.y
       const sx2 = activeRect.maxX * z + p.x, sy2 = activeRect.maxY * z + p.y
