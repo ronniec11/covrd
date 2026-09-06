@@ -6,6 +6,8 @@ import { useAuth } from '../contexts/AuthContext'
 const PRESET_COLORS = [
   '#4ade80', '#22d3ee', '#f472b6', '#fb923c', '#a78bfa',
   '#fbbf24', '#f87171', '#34d399', '#60a5fa', '#e879f9',
+  '#f59e0b', '#84cc16', '#14b8a6', '#0ea5e9', '#6366f1',
+  '#f43f5e', '#8b5cf6', '#ea580c', '#059669', '#db2777',
 ]
 
 export default function Profile() {
@@ -105,15 +107,12 @@ export default function Profile() {
                   />
                 ))}
               </div>
-              <div className="flex items-center gap-3">
-                <input
-                  type="color"
-                  value={color}
-                  onChange={e => setColor(e.target.value)}
-                  className="w-10 h-10 rounded-lg border border-border bg-surface-2 cursor-pointer p-0.5"
-                />
-                <span className="text-sm font-mono text-gray-400">{color}</span>
-              </div>
+              <input
+                type="color"
+                value={color}
+                onChange={e => setColor(e.target.value)}
+                className="w-10 h-10 rounded-lg border border-border bg-surface-2 cursor-pointer p-0.5"
+              />
             </div>
 
             {error && (
