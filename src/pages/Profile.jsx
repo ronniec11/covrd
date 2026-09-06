@@ -8,6 +8,7 @@ const PRESET_COLORS = [
   '#fbbf24', '#f87171', '#34d399', '#60a5fa', '#e879f9',
   '#f59e0b', '#84cc16', '#14b8a6', '#0ea5e9', '#6366f1',
   '#f43f5e', '#8b5cf6', '#ea580c', '#059669', '#db2777',
+  '#64748b', '#fde047',
 ]
 
 export default function Profile() {
@@ -107,12 +108,6 @@ export default function Profile() {
                   />
                 ))}
               </div>
-              <input
-                type="color"
-                value={color}
-                onChange={e => setColor(e.target.value)}
-                className="w-10 h-10 rounded-lg border border-border bg-surface-2 cursor-pointer p-0.5"
-              />
             </div>
 
             {error && (
