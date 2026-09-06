@@ -1891,7 +1891,7 @@ export default function Canvas() {
         const editBtn = document.createElement('button')
         editBtn.innerHTML = '<svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z"/></svg>'
         editBtn.title = 'Edit'
-        editBtn.style.cssText = 'background:none;border:none;cursor:pointer;padding:2px 4px;opacity:0.6;display:inline-flex;align-items:center;color:#a8a49e;'
+        editBtn.style.cssText = 'background:none;border:none;cursor:pointer;padding:2px 4px;opacity:0.6;display:inline-flex;align-items:center;color:var(--ct-muted);'
         editBtn.onmouseenter = () => { editBtn.style.opacity = '1' }
         editBtn.onmouseleave = () => { editBtn.style.opacity = '0.6' }
         editBtn.addEventListener('click', ev => openEditModal(pg.id, s.id, ev))
@@ -2355,7 +2355,7 @@ export default function Canvas() {
       if (rec?.sessions.length) {
         cell.classList.add('has-data')
         const dot = document.createElement('div'); dot.className = 'ct-cal-cell-dot'
-        dot.style.background = rec.dayColor || '#7a7870'; cell.appendChild(dot)
+        dot.style.background = rec.dayColor || 'var(--ct-muted)'; cell.appendChild(dot)
       }
       cell.addEventListener('click', () => {
         if (otherMonth) { calYear = ry; calMonth = rm; renderCalendar(); return }
@@ -2388,14 +2388,14 @@ export default function Canvas() {
       if (rec.target > 0) {
         const pct = Math.min((totalSF/rec.target)*100,100)
         const pbg = document.createElement('div'); pbg.className = 'ct-cal-day-progress'
-        pbg.innerHTML = `<div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:10px;color:#7a7870"><span>Progress</span><span style="color:#f0ede6;font-weight:700">${Math.round(totalSF).toLocaleString()} / ${Math.round(rec.target).toLocaleString()} SF</span></div><div class="ct-progress-bar-bg"><div class="ct-progress-bar-fill${totalSF>=rec.target?' over':''}" style="width:${pct}%"></div></div>`
+        pbg.innerHTML = `<div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:10px;color:var(--ct-muted)"><span>Progress</span><span style="color:var(--ct-text);font-weight:700">${Math.round(totalSF).toLocaleString()} / ${Math.round(rec.target).toLocaleString()} SF</span></div><div class="ct-progress-bar-bg"><div class="ct-progress-bar-fill${totalSF>=rec.target?' over':''}" style="width:${pct}%"></div></div>`
         panel.appendChild(pbg)
       }
       const byPage = {}
       rec.sessions.forEach(s => { if (!byPage[s.pageName]) byPage[s.pageName]=[]; byPage[s.pageName].push(s) })
       Object.entries(byPage).forEach(([pname, sessions]) => {
         const lbl = document.createElement('div')
-        lbl.style.cssText='font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#7a7870;margin:8px 0 4px'
+        lbl.style.cssText='font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--ct-muted);margin:8px 0 4px'
         lbl.textContent = pname; panel.appendChild(lbl)
         sessions.forEach(s => {
           const d = document.createElement('div'); d.className = 'ct-cal-sess-item'
@@ -2404,14 +2404,14 @@ export default function Canvas() {
         })
       })
       const tot = document.createElement('div')
-      tot.style.cssText='margin-top:10px;padding-top:8px;border-top:1px solid #2e2e2b;display:flex;justify-content:space-between;'
-      tot.innerHTML = `<span style="font-size:10px;color:#7a7870;font-weight:700;text-transform:uppercase;letter-spacing:1px">Total</span><span style="font-size:16px;font-weight:800;color:#4ade80">${Math.round(totalSF).toLocaleString()} SF</span>`
+      tot.style.cssText='margin-top:10px;padding-top:8px;border-top:1px solid var(--ct-border);display:flex;justify-content:space-between;'
+      tot.innerHTML = `<span style="font-size:10px;color:var(--ct-muted);font-weight:700;text-transform:uppercase;letter-spacing:1px">Total</span><span style="font-size:16px;font-weight:800;color:var(--ct-accent)">${Math.round(totalSF).toLocaleString()} SF</span>`
       panel.appendChild(tot)
     }
     function renderCalChart() {
       const wrapEl = calBarsRef.current; wrapEl.innerHTML = ''
       const days = dayRecords.slice(0,30).reverse()
-      if (!days.length) { wrapEl.innerHTML = '<div style="font-size:11px;color:#7a7870">No history yet</div>'; return }
+      if (!days.length) { wrapEl.innerHTML = '<div style="font-size:11px;color:var(--ct-muted)">No history yet</div>'; return }
       const maxSF = Math.max(...days.map(h=>h.sessions.reduce((a,s)=>a+s.sf,0)),1)
       days.forEach(h => {
         const sf = h.sessions.reduce((a,s)=>a+s.sf,0)
@@ -2426,12 +2426,12 @@ export default function Canvas() {
     }
     function renderCalLegend() {
       const el = calLegendRef.current; el.innerHTML = ''
-      if (!dayRecords.length) { el.innerHTML = '<div style="font-size:12px;color:#7a7870">No days recorded yet</div>'; return }
+      if (!dayRecords.length) { el.innerHTML = '<div style="font-size:12px;color:var(--ct-muted)">No days recorded yet</div>'; return }
       dayRecords.forEach(h => {
         const sf  = h.sessions.reduce((a,s)=>a+s.sf,0)
         const pct = h.target>0 ? Math.round((sf/h.target)*100) : null
         const d   = document.createElement('div'); d.className = 'ct-cal-legend-item'
-        d.innerHTML = `<div class="ct-cal-legend-swatch" style="background:${h.dayColor||'#7a7870'}"></div><div class="ct-cal-legend-date">${formatDate(h.date)}</div><div class="ct-cal-legend-sf" style="color:${h.dayColor||'#4ade80'}">${Math.round(sf).toLocaleString()} SF</div>${pct!==null?`<div class="ct-cal-legend-pct" style="background:${pct>=100?'rgba(74,222,128,0.15)':'rgba(250,204,21,0.15)'};color:${pct>=100?'#4ade80':'#facc15'}">${pct}%</div>`:''}`
+        d.innerHTML = `<div class="ct-cal-legend-swatch" style="background:${h.dayColor||'var(--ct-muted)'}"></div><div class="ct-cal-legend-date">${formatDate(h.date)}</div><div class="ct-cal-legend-sf" style="color:${h.dayColor||'var(--ct-accent)'}">${Math.round(sf).toLocaleString()} SF</div>${pct!==null?`<div class="ct-cal-legend-pct" style="background:${pct>=100?'rgba(74,222,128,0.15)':'rgba(250,204,21,0.15)'};color:${pct>=100?'var(--ct-accent)':'#facc15'}">${pct}%</div>`:''}`
         d.addEventListener('click', ()=>{ calSelectedDate=h.date; renderCalendar(); renderCalDayPanel(h.date,h) })
         el.appendChild(d)
       })
@@ -3044,12 +3044,12 @@ export default function Canvas() {
   }, [pageId, user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div style={{display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden',fontFamily:'system-ui,sans-serif',background:'#111210',color:'#f0ede6'}}>
+    <div style={{display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden',fontFamily:'system-ui,sans-serif',background:'var(--ct-bg)',color:'var(--ct-text)'}}>
 
       <div className="ct-header">
         <button className="ct-hbtn" onClick={() => navigate(-1)} style={{flexShrink:0}}>← Back</button>
         <div className="ct-hdiv" />
-        <span ref={pageTitleRef} style={{fontSize:13,fontWeight:700,color:'#f0ede6',whiteSpace:'nowrap',flexShrink:0}}>Loading…</span>
+        <span ref={pageTitleRef} style={{fontSize:13,fontWeight:700,color:'var(--ct-text)',whiteSpace:'nowrap',flexShrink:0}}>Loading…</span>
         <div className="ct-hdiv" />
         <div className="ct-hgroup">
           <span className="ct-hlbl">Scale</span>
@@ -3072,16 +3072,16 @@ export default function Canvas() {
         </div>
         <div ref={customWrapRef} style={{display:'none',alignItems:'center',gap:4}}>
           <input ref={cNumerRef} type="number" className="ct-num-input" defaultValue="1" min="0.001" step="0.125" style={{width:44}} />
-          <span style={{color:'#7a7870',fontSize:12}}>" =</span>
+          <span style={{color:'var(--ct-muted)',fontSize:12}}>" =</span>
           <input ref={cDenomRef} type="number" className="ct-num-input" defaultValue="1" min="0.001" step="1" style={{width:44}} />
-          <span style={{color:'#7a7870',fontSize:12}}>'</span>
+          <span style={{color:'var(--ct-muted)',fontSize:12}}>'</span>
         </div>
         <div className="ct-hdiv" />
         <button ref={calibBtnRef} className="ct-hbtn" onClick={() => api.current.startCalib?.()}>Calibrate</button>
         <span ref={calibInfoRef} className="ct-calib-info" style={{display:'none'}} />
         <div className="ct-hdiv" />
         <div className="ct-stat-box">
-          <div ref={hdrSessionRef} className="ct-stat-val" style={{color:'#4ade80'}}>0</div>
+          <div ref={hdrSessionRef} className="ct-stat-val" style={{color:'var(--ct-accent)'}}>0</div>
           <div className="ct-stat-lbl">Session SF</div>
         </div>
         <div className="ct-hdiv" />
@@ -3100,7 +3100,7 @@ export default function Canvas() {
               <div style={{width:28,height:28,borderRadius:'50%',background:canvasProfile.avatar_color||'#4ade80',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#000',flexShrink:0}}>
                 {(canvasProfile.full_name||user?.email||'U').charAt(0).toUpperCase()}
               </div>
-              <span style={{fontSize:13,fontWeight:500,color:'#e0e0e0',whiteSpace:'nowrap'}}>
+              <span style={{fontSize:13,fontWeight:500,color:'var(--ct-text)',whiteSpace:'nowrap'}}>
                 {canvasProfile.full_name||user?.email?.split('@')[0]||'User'}
               </span>
             </div>
@@ -3109,7 +3109,7 @@ export default function Canvas() {
         </div>
       </div>
       {/* Total building progress — 4px strip below header */}
-      <div style={{height:4,background:'#1e3a5f',flexShrink:0,overflow:'hidden'}}>
+      <div style={{height:4,background:'var(--ct-track-blue)',flexShrink:0,overflow:'hidden'}}>
         <div ref={hdrProgressFillRef} style={{height:4,background:'#3b82f6',width:'0%',borderRadius:2,transition:'width 0.4s ease'}} />
       </div>
 
