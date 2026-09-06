@@ -2,6 +2,35 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Theme tokens — space-separated RGB (no rgb() wrapper) so Tailwind's
+   rgb(var(...) / <alpha-value>) color definitions in tailwind.config.js can
+   apply opacity modifiers (bg-surface/30 etc.). Light is the default (no
+   class needed); :root.dark overrides it — the class is toggled by
+   ThemeContext and set synchronously by the inline script in index.html
+   before React mounts, so there's no flash of the wrong theme. */
+:root {
+  --color-bg: 247 247 245;
+  --color-surface: 255 255 255;
+  --color-surface-2: 238 238 236;
+  --color-surface-3: 226 226 222;
+  --color-accent: 22 163 74;
+  --color-accent-dim: 21 128 61;
+  --color-muted: 107 114 128;
+  --color-border: 216 216 212;
+  --color-text: 28 28 26;
+}
+:root.dark {
+  --color-bg: 17 18 16;
+  --color-surface: 28 28 26;
+  --color-surface-2: 37 37 35;
+  --color-surface-3: 46 46 43;
+  --color-accent: 74 222 128;
+  --color-accent-dim: 34 197 94;
+  --color-muted: 107 114 128;
+  --color-border: 46 46 43;
+  --color-text: 229 231 235;
+}
+
 @layer base {
   * {
     box-sizing: border-box;
@@ -14,8 +43,8 @@
   }
 
   body {
-    background-color: #111210;
-    color: #e5e7eb;
+    background-color: rgb(var(--color-bg));
+    color: rgb(var(--color-text));
     font-family: 'Inter', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
   }

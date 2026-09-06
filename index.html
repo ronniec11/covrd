@@ -16,6 +16,17 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Applies the saved theme before React mounts/paints anything, so a
+         user who picked light mode doesn't see a flash of dark first. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('squeegee_theme')
+          if (t === 'light') document.documentElement.classList.remove('dark')
+          else document.documentElement.classList.add('dark')
+        } catch (e) { document.documentElement.classList.add('dark') }
+      })()
+    </script>
     <!-- Polyfills for Safari and older browsers (used by pdfjs-dist) -->
     <script>
       if (typeof Promise.withResolvers === 'undefined') {

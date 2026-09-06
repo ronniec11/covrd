@@ -25,7 +25,7 @@ export default function Navbar() {
           <Link
             to="/projects"
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              location.pathname.startsWith('/projects') ? 'text-accent bg-accent/10' : 'text-muted hover:text-gray-300 hover:bg-surface-2'
+              location.pathname.startsWith('/projects') ? 'text-accent bg-accent/10' : 'text-muted hover:text-gray-700 dark:hover:text-gray-300 hover:bg-surface-2'
             }`}
           >
             Projects
@@ -45,7 +45,7 @@ export default function Navbar() {
             >
               {(profile.full_name || 'U')[0].toUpperCase()}
             </div>
-            <span className="text-sm text-gray-300 group-hover:text-gray-100 hidden sm:block">{profile.full_name}</span>
+            <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100 hidden sm:block">{profile.full_name}</span>
             <span className="text-xs text-muted capitalize hidden md:block">({profile.role})</span>
           </Link>
         )}

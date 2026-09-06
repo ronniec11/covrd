@@ -40,14 +40,14 @@ export default function Login() {
         <div className="flex items-center justify-center gap-4 mb-8">
           <img src="/squeegee-icon.svg" style={{ width: '56px', height: '56px' }} />
           <div>
-            <h1 className="text-3xl font-bold text-white tracking-tight">squeegee</h1>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">squeegee</h1>
             <p className="text-xs font-semibold tracking-widest" style={{ color: '#4ade80' }}>PRODUCTION TRACKING</p>
           </div>
         </div>
 
         {/* Card */}
         <div className="card border-border/60">
-          <h2 className="text-base font-semibold text-gray-100 mb-5">Sign in to your account</h2>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-5">Sign in to your account</h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -77,7 +77,7 @@ export default function Login() {
             </div>
 
             {error && (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-red-400 text-sm">
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-red-600 dark:text-red-400 text-sm">
                 {error}
               </div>
             )}

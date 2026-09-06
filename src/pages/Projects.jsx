@@ -43,7 +43,7 @@ function StatusBadge({ status, onSave, className = '' }) {
             <button
               key={s}
               onClick={e => select(e, s)}
-              className={`w-full text-left px-3 py-1.5 text-xs capitalize hover:bg-surface-2 transition-colors flex items-center gap-2 ${s === status ? 'text-white font-medium' : 'text-gray-400'}`}
+              className={`w-full text-left px-3 py-1.5 text-xs capitalize hover:bg-surface-2 transition-colors flex items-center gap-2 ${s === status ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-500 dark:text-gray-400'}`}
             >
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s === 'active' ? 'bg-accent' : s === 'completed' ? 'bg-blue-400' : 'bg-yellow-400'}`} />
               {s}
@@ -104,7 +104,7 @@ function CreateProjectModal({ onClose, onCreated }) {
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-surface border border-border rounded-2xl w-full max-w-md p-6">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-base font-semibold text-white">New Project</h2>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-white">New Project</h2>
           <button onClick={onClose} className="btn-ghost p-1.5">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -146,7 +146,7 @@ function CreateProjectModal({ onClose, onCreated }) {
           </div>
 
           {error && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-red-400 text-sm">{error}</div>
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-red-600 dark:text-red-400 text-sm">{error}</div>
           )}
 
           <div className="flex gap-2 pt-1">
@@ -167,7 +167,7 @@ const PencilIcon = () => (
   </svg>
 )
 
-function InlineTargetEdit({ label, value, onSave, canManage, colorClass = 'text-gray-200', prefix = '', suffix = 'SF', allowNull = false }) {
+function InlineTargetEdit({ label, value, onSave, canManage, colorClass = 'text-gray-800 dark:text-gray-200', prefix = '', suffix = 'SF', allowNull = false }) {
   const [editing, setEditing] = useState(false)
   const [input, setInput] = useState(value ?? '')
   const [saving, setSaving] = useState(false)
@@ -308,7 +308,7 @@ function ProjectCard({ project, todaySF, allTimeSF, onClick, onRename, onUpdateP
           ) : (
             <>
               <div className="flex items-center gap-1.5 min-w-0">
-                <h3 className="font-semibold text-gray-100 group-hover:text-white truncate">{project.name}</h3>
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100 group-hover:text-accent truncate">{project.name}</h3>
                 {canManage && (
                   <button
                     onClick={openEdit}
@@ -320,7 +320,7 @@ function ProjectCard({ project, todaySF, allTimeSF, onClick, onRename, onUpdateP
                 )}
               </div>
               {project.description && (
-                <p className="text-xs text-gray-400 mt-1 line-clamp-2">{project.description}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{project.description}</p>
               )}
             </>
           )}
@@ -353,7 +353,7 @@ function ProjectCard({ project, todaySF, allTimeSF, onClick, onRename, onUpdateP
             value={project.total_sf_target}
             onSave={saveTotalTarget}
             canManage={canManage}
-            colorClass="text-blue-300"
+            colorClass="text-blue-600 dark:text-blue-300"
           />
         </div>
         <div className="bg-surface-2 rounded-lg p-2.5">
@@ -364,7 +364,7 @@ function ProjectCard({ project, todaySF, allTimeSF, onClick, onRename, onUpdateP
         </div>
         <div className="bg-surface-2 rounded-lg p-2.5">
           <p className="text-xs text-muted mb-0.5">Total Cleaned</p>
-          <p className="text-sm font-semibold text-gray-200">
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
             {allTimeSF.toLocaleString(undefined, { maximumFractionDigits: 0 })} <span className="text-xs font-normal text-muted">SF</span>
           </p>
         </div>
@@ -374,7 +374,7 @@ function ProjectCard({ project, todaySF, allTimeSF, onClick, onRename, onUpdateP
             value={project.cost}
             onSave={saveCost}
             canManage={canManage}
-            colorClass="text-green-300"
+            colorClass="text-green-700 dark:text-green-300"
             prefix="$"
             suffix=""
             allowNull
@@ -382,7 +382,7 @@ function ProjectCard({ project, todaySF, allTimeSF, onClick, onRename, onUpdateP
         </div>
         <div className="bg-surface-2 rounded-lg p-2.5">
           <p className="text-xs text-muted mb-0.5">Target $/SF</p>
-          <p className="text-sm font-semibold text-gray-200">{formatRatePerSF(project.cost, project.total_sf_target)}</p>
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{formatRatePerSF(project.cost, project.total_sf_target)}</p>
         </div>
       </div>
 
@@ -390,7 +390,7 @@ function ProjectCard({ project, todaySF, allTimeSF, onClick, onRename, onUpdateP
       <div className="mb-2">
         <div className="flex justify-between text-xs mb-1">
           <span className="text-muted">Daily progress</span>
-          <span className={dailyPct >= 100 ? 'text-accent font-medium' : 'text-gray-400'}>
+          <span className={dailyPct >= 100 ? 'text-accent font-medium' : 'text-gray-500 dark:text-gray-400'}>
             {project.daily_sf_target > 0 ? `${dailyPct}%` : '—'}
           </span>
         </div>
@@ -403,7 +403,7 @@ function ProjectCard({ project, todaySF, allTimeSF, onClick, onRename, onUpdateP
       <div>
         <div className="flex justify-between text-xs mb-1">
           <span className="text-muted">Total progress</span>
-          <span className={totalPct >= 100 ? 'text-blue-400 font-medium' : 'text-gray-400'}>
+          <span className={totalPct >= 100 ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-500 dark:text-gray-400'}>
             {project.total_sf_target > 0 ? `${totalPct}%` : 'Total target not set'}
           </span>
         </div>
@@ -522,7 +522,7 @@ export default function Projects() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-xl font-bold text-white">Projects</h1>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white">Projects</h1>
             <p className="text-sm text-muted mt-0.5">
               {projects.length} {projects.length === 1 ? 'project' : 'projects'} assigned
             </p>
@@ -565,7 +565,7 @@ export default function Projects() {
                 key={s}
                 onClick={() => setFilterStatus(s)}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors capitalize ${
-                  filterStatus === s ? 'bg-accent/10 text-accent border border-accent/30' : 'bg-surface-2 text-muted hover:text-gray-300 border border-border'
+                  filterStatus === s ? 'bg-accent/10 text-accent border border-accent/30' : 'bg-surface-2 text-muted hover:text-gray-700 dark:hover:text-gray-300 border border-border'
                 }`}
               >
                 {s}
@@ -591,11 +591,11 @@ export default function Projects() {
         ) : loadError ? (
           <div className="text-center py-16">
             <div className="w-12 h-12 bg-red-500/10 rounded-xl flex items-center justify-center mx-auto mb-3">
-              <svg className="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
               </svg>
             </div>
-            <p className="text-gray-300 font-medium mb-1">Failed to load projects</p>
+            <p className="text-gray-700 dark:text-gray-300 font-medium mb-1">Failed to load projects</p>
             <p className="text-sm text-muted mb-4">{loadError}</p>
             <button onClick={loadProjects} className="btn-secondary">
               Try again
@@ -608,7 +608,7 @@ export default function Projects() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
               </svg>
             </div>
-            <p className="text-gray-400 font-medium">No projects found</p>
+            <p className="text-gray-500 dark:text-gray-400 font-medium">No projects found</p>
             <p className="text-sm text-muted mt-1">
               {projects.length === 0 ? 'You have not been added to any projects yet.' : 'Try adjusting your filters.'}
             </p>

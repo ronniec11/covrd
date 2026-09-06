@@ -134,7 +134,7 @@ export default function Reports() {
     return (
       <Layout>
         <div className="max-w-3xl mx-auto px-4 py-16 text-center">
-          <p className="text-gray-300 font-medium mb-1">Reports are only available to admins and PMs.</p>
+          <p className="text-gray-700 dark:text-gray-300 font-medium mb-1">Reports are only available to admins and PMs.</p>
         </div>
       </Layout>
     )
@@ -144,7 +144,7 @@ export default function Reports() {
     <Layout>
       <div className="max-w-6xl mx-auto px-4 py-6">
         <div className="mb-6">
-          <h1 className="text-xl font-bold text-white">Production Report</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Production Report</h1>
           <p className="text-sm text-muted mt-0.5">Session-level production data for project estimating.</p>
         </div>
 
@@ -178,19 +178,19 @@ export default function Reports() {
 
         {error && (
           <div className="text-center py-10">
-            <p className="text-gray-300 font-medium mb-1">Failed to load report</p>
+            <p className="text-gray-700 dark:text-gray-300 font-medium mb-1">Failed to load report</p>
             <p className="text-sm text-muted">{error}</p>
           </div>
         )}
 
         {!error && hasRun && rows.length === 0 && (
           <div className="text-center py-16">
-            <p className="text-gray-400 font-medium">No sessions found for this range.</p>
+            <p className="text-gray-500 dark:text-gray-400 font-medium">No sessions found for this range.</p>
           </div>
         )}
 
         {!error && hasRun && migrationMissing && (
-          <div className="mb-4 px-4 py-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-sm text-yellow-200">
+          <div className="mb-4 px-4 py-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-sm text-yellow-800 dark:text-yellow-200">
             Crew Size / Hours Worked columns don't exist in the database yet, so those two fields are blank below for every row. Run the migration noted in Canvas.jsx / supabase-schema.sql (ALTER TABLE ... crew_size / hours_worked) in the Supabase SQL editor, then run this report again.
           </div>
         )}
@@ -224,7 +224,7 @@ export default function Reports() {
                 </thead>
                 <tbody>
                   {rows.map((r, i) => (
-                    <tr key={i} className="border-b border-border/50 text-gray-300">
+                    <tr key={i} className="border-b border-border/50 text-gray-700 dark:text-gray-300">
                       <td className="py-2 pr-4">{r.person}</td>
                       {showProjectColumn && <td className="py-2 pr-4">{r.project}</td>}
                       <td className="py-2 pr-4">{r.floorPlan}</td>

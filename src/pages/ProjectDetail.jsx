@@ -45,7 +45,7 @@ function StatusBadge({ status, onSave }) {
             <button
               key={s}
               onClick={() => select(s)}
-              className={`w-full text-left px-3 py-1.5 text-xs capitalize hover:bg-surface-2 transition-colors flex items-center gap-2 ${s === status ? 'text-white font-medium' : 'text-gray-400'}`}
+              className={`w-full text-left px-3 py-1.5 text-xs capitalize hover:bg-surface-2 transition-colors flex items-center gap-2 ${s === status ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-500 dark:text-gray-400'}`}
             >
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s === 'active' ? 'bg-accent' : s === 'completed' ? 'bg-blue-400' : 'bg-yellow-400'}`} />
               {s}
@@ -137,7 +137,7 @@ function AddPageModal({ projectId, onClose, onCreated }) {
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-surface border border-border rounded-2xl w-full max-w-md p-6">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-base font-semibold text-white">Add Floor Plan</h2>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-white">Add Floor Plan</h2>
           <button onClick={onClose} disabled={loading} className="btn-ghost p-1.5">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -179,7 +179,7 @@ function AddPageModal({ projectId, onClose, onCreated }) {
           )}
 
           {error && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-red-400 text-sm">{error}</div>
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-red-600 dark:text-red-400 text-sm">{error}</div>
           )}
 
           <div className="flex gap-2 pt-1">
@@ -247,7 +247,7 @@ function AddMemberModal({ projectId, onClose, onAdded }) {
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-surface border border-border rounded-2xl w-full max-w-sm p-6">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-base font-semibold text-white">Add Team Member</h2>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-white">Add Team Member</h2>
           <button onClick={onClose} className="btn-ghost p-1.5">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -259,7 +259,7 @@ function AddMemberModal({ projectId, onClose, onAdded }) {
             <label className="label">Member Email</label>
             <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="member@company.com" required />
           </div>
-          {error && <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-red-400 text-sm">{error}</div>}
+          {error && <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-red-600 dark:text-red-400 text-sm">{error}</div>}
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancel</button>
             <button type="submit" disabled={loading} className="btn-primary flex-1">{loading ? 'Adding...' : 'Add Member'}</button>
@@ -554,7 +554,7 @@ export default function ProjectDetail() {
                 ) : (
                   <>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h1 className="text-lg font-bold text-white">{project.name}</h1>
+                      <h1 className="text-lg font-bold text-gray-900 dark:text-white">{project.name}</h1>
                       <StatusBadge
                         status={project.status}
                         onSave={async s => {
@@ -572,7 +572,7 @@ export default function ProjectDetail() {
                         </button>
                       )}
                     </div>
-                    {project.description && <p className="text-sm text-gray-400 mt-0.5">{project.description}</p>}
+                    {project.description && <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{project.description}</p>}
                   </>
                 )}
               </div>
@@ -600,7 +600,7 @@ export default function ProjectDetail() {
                         <div className="flex flex-col items-center gap-1" style={{ width: 120 }}>
                           <input
                             autoFocus
-                            className="text-xs bg-surface-3 border border-accent/50 rounded px-2 py-1 w-full text-white text-center"
+                            className="text-xs bg-surface-3 border border-accent/50 rounded px-2 py-1 w-full text-gray-900 dark:text-white text-center"
                             value={editingPageName}
                             onChange={e => setEditingPageName(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Enter') savePageRename(page); if (e.key === 'Escape') setEditingPageId(null) }}
@@ -615,7 +615,7 @@ export default function ProjectDetail() {
                           onClick={() => setActivePage(page)}
                           onDoubleClick={() => navigate(`/canvas/${page.id}`)}
                           className={`cursor-pointer rounded-xl border-2 flex items-center justify-center text-center font-semibold text-sm transition-all px-2 ${
-                            isActive ? 'border-accent text-accent bg-surface' : 'border-border text-gray-400 bg-surface hover:border-gray-500'
+                            isActive ? 'border-accent text-accent bg-surface' : 'border-border text-gray-500 dark:text-gray-400 bg-surface hover:border-gray-500'
                           }`}
                           style={{ width: 120, height: 80 }}
                         >
@@ -668,7 +668,7 @@ export default function ProjectDetail() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.498l4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 00-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0z" />
                 </svg>
               </div>
-              <p className="text-gray-400 font-medium">No floor plans yet</p>
+              <p className="text-gray-500 dark:text-gray-400 font-medium">No floor plans yet</p>
               {canManage && (
                 <button onClick={() => setShowAddPage(true)} className="btn-primary mt-4 flex items-center gap-1.5">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -684,7 +684,7 @@ export default function ProjectDetail() {
           <div className="px-4 pb-4">
             <div className="border border-border rounded-xl overflow-hidden">
               <div className="px-4 py-3 border-b border-border bg-surface/50 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-white">Progress</h2>
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Progress</h2>
                 <button
                   onClick={refreshSessions}
                   disabled={sessionsRefreshing}
@@ -703,7 +703,7 @@ export default function ProjectDetail() {
                 <div className="flex justify-between items-baseline mb-2">
                   <span className="text-xs text-muted font-medium">Total Progress</span>
                   <div className="flex items-center gap-1">
-                    <span className="text-sm font-semibold text-white">
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white">
                       {totalSF.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       {project?.total_sf_target > 0 && (
                         <span className="text-muted font-normal"> / {project.total_sf_target.toLocaleString()} SF</span>
@@ -741,7 +741,7 @@ export default function ProjectDetail() {
                     </div>
                     <div className="flex justify-between text-xs mt-1">
                       <span className="text-muted">{totalPct}% complete</span>
-                      {totalPct >= 100 && <span className="text-blue-400 font-medium">Building complete!</span>}
+                      {totalPct >= 100 && <span className="text-blue-600 dark:text-blue-400 font-medium">Building complete!</span>}
                     </div>
                   </>
                 )}
@@ -752,7 +752,7 @@ export default function ProjectDetail() {
                 <div className="flex justify-between items-baseline mb-2">
                   <span className="text-xs text-muted font-medium">Contract Cost</span>
                   <div className="flex items-center gap-1">
-                    <span className="text-sm font-semibold text-white">
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white">
                       {project?.cost ? `$${project.cost.toLocaleString()}` : '—'}
                       <span className="text-muted font-normal"> · {ratePerSF}</span>
                     </span>
@@ -787,7 +787,7 @@ export default function ProjectDetail() {
               <div className="px-4 py-3 border-b border-border bg-surface/30">
                 <div className="flex justify-between items-baseline mb-2">
                   <span className="text-xs text-muted font-medium">Daily Progress</span>
-                  <span className="text-sm font-semibold text-white">
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white">
                     {todaySF.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     {project?.daily_sf_target > 0 && (
                       <span className="text-muted font-normal"> / {project.daily_sf_target.toLocaleString()} SF</span>
@@ -831,14 +831,14 @@ export default function ProjectDetail() {
                       return (
                         <div key={date} className="px-4 py-3">
                           <div className="flex items-center justify-between mb-2">
-                            <p className="text-xs font-semibold text-gray-200">{label}{date === today && <span className="ml-1.5 text-accent">Today</span>}</p>
+                            <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">{label}{date === today && <span className="ml-1.5 text-accent">Today</span>}</p>
                             <p className="text-xs text-muted">{dateSF.toLocaleString(undefined, { maximumFractionDigits: 0 })} SF</p>
                           </div>
                           <div className="space-y-2">
                             {dateSessions.map(session => (
                               <div key={session.id} className="flex items-center gap-2.5">
                                 <div className="w-4 h-4 rounded-full shrink-0" style={{ backgroundColor: session.color || '#facc15' }} />
-                                <p className="text-xs text-gray-300 flex-1 truncate">{session.name || 'Session'}</p>
+                                <p className="text-xs text-gray-700 dark:text-gray-300 flex-1 truncate">{session.name || 'Session'}</p>
                                 <p className="text-xs text-muted shrink-0">
                                   {[
                                     session.profiles?.full_name || 'Unknown',
@@ -873,7 +873,7 @@ export default function ProjectDetail() {
                   <div className="flex justify-between items-center mb-1">
                     <p className="text-xs text-muted font-medium">Total Progress</p>
                     <div className="flex items-center gap-1">
-                      <p className="text-xs text-gray-300">
+                      <p className="text-xs text-gray-700 dark:text-gray-300">
                         {totalSF.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         {project?.total_sf_target > 0 && <span className="text-muted"> / {project.total_sf_target.toLocaleString()}</span>}
                         {' SF'}
@@ -910,7 +910,7 @@ export default function ProjectDetail() {
                       </div>
                       <div className="flex justify-between text-xs mt-1">
                         <span className="text-muted">{totalPct}%</span>
-                        {totalPct >= 100 && <span className="text-blue-400 font-medium">Complete!</span>}
+                        {totalPct >= 100 && <span className="text-blue-600 dark:text-blue-400 font-medium">Complete!</span>}
                       </div>
                     </>
                   ) : (
@@ -925,7 +925,7 @@ export default function ProjectDetail() {
                   <div className="flex justify-between items-center mb-1">
                     <p className="text-xs text-muted font-medium">Contract Cost</p>
                     <div className="flex items-center gap-1">
-                      <p className="text-xs text-gray-300">
+                      <p className="text-xs text-gray-700 dark:text-gray-300">
                         {project?.cost ? `$${project.cost.toLocaleString()}` : '—'}
                         <span className="text-muted"> · {ratePerSF}</span>
                       </p>
@@ -961,7 +961,7 @@ export default function ProjectDetail() {
                   <div className="flex justify-between items-center mb-1">
                     <p className="text-xs text-muted font-medium">Daily Progress</p>
                     <div className="flex items-center gap-1">
-                      <p className="text-xs text-gray-300">
+                      <p className="text-xs text-gray-700 dark:text-gray-300">
                         {todaySF.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         {project?.daily_sf_target > 0 && <span className="text-muted"> / {project.daily_sf_target.toLocaleString()}</span>}
                         {' SF'}
@@ -1023,7 +1023,7 @@ export default function ProjectDetail() {
                         style={{ backgroundColor: session.color || '#facc15' }}
                       />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-gray-200 truncate">{session.name || 'Session'}</p>
+                        <p className="text-xs font-medium text-gray-800 dark:text-gray-200 truncate">{session.name || 'Session'}</p>
                         <p className="text-xs text-muted">
                           {(() => { const sf = parseFloat(session.sf) || 0; const ct = session.count_data?.length || 0; return sf > 0 && ct > 0 ? `${sf.toLocaleString(undefined, { maximumFractionDigits: 0 })} SF · ${ct} items` : ct > 0 ? `${ct} items` : `${sf.toLocaleString(undefined, { maximumFractionDigits: 0 })} SF` })()}
                         </p>
@@ -1054,7 +1054,7 @@ export default function ProjectDetail() {
                       {(member.name || 'U')[0].toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-gray-200 truncate">{member.name}</p>
+                      <p className="text-xs font-medium text-gray-800 dark:text-gray-200 truncate">{member.name}</p>
                       <p className="text-xs text-muted capitalize">{member.role}</p>
                     </div>
                   </div>
