@@ -20,13 +20,14 @@
   --ct-track-blue: #dbeafe;
 }
 :root.dark {
-  --ct-bg: #0d0d0b;
-  --ct-bg-dot: #1a1a16;
-  --ct-surface: #1c1c1a;
-  --ct-surface-2: #242422;
-  --ct-border: #2e2e2b;
-  --ct-text: #f0ede6;
-  --ct-muted: #7a7870;
+  /* Dark blue-gray (Monday.com-style navy) instead of neutral gray/black. */
+  --ct-bg: #0e0f1c;
+  --ct-bg-dot: #1a1d33;
+  --ct-surface: #1c1f36;
+  --ct-surface-2: #262a48;
+  --ct-border: #333a5c;
+  --ct-text: #e8eaf6;
+  --ct-muted: #8b90b3;
   --ct-accent: #4ade80;
   --ct-accent-dim: #3bc470;
   --ct-track-blue: #1e3a5f;
