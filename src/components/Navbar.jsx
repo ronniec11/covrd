@@ -1,9 +1,12 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import SqueegeeLogo from '../assets/squeegee-logo-full.svg'
+import { useTheme } from '../contexts/ThemeContext'
+import SqueegeeLogoDark from '../assets/squeegee-logo-full.svg'
+import SqueegeeLogoLight from '../assets/squeegee-logo-full-light.svg'
 
 export default function Navbar() {
   const { profile, signOut } = useAuth()
+  const { theme } = useTheme()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -17,7 +20,7 @@ export default function Navbar() {
   return (
     <header className="h-14 bg-surface border-b border-border flex items-center px-4 gap-4 shrink-0 z-40">
       <Link to="/projects" className="flex items-center group">
-        <img src={SqueegeeLogo} alt="Squeegee" className="h-8 w-auto" />
+        <img src={theme === 'light' ? SqueegeeLogoLight : SqueegeeLogoDark} alt="Squeegee" className="h-8 w-auto" />
       </Link>
 
       {!isCanvas && (
