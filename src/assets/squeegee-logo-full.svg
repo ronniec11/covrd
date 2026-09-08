@@ -14,9 +14,10 @@
   <rect x="27" y="10" width="16" height="16" fill="none" stroke="#2a3350" stroke-width="0.7"/>
   <rect x="8"  y="26" width="35" height="16" fill="none" stroke="#2a3350" stroke-width="0.7"/>
 
-  <!-- Highlighted cells — two tones so the icon isn't a single flat color -->
+  <!-- Highlighted cells — blue, green, red so the icon isn't a single flat color -->
   <rect x="8.4" y="10.4" width="18.2" height="15.2" fill="#60a5fa" opacity="0.25"/>
   <rect x="27.4" y="10.4" width="15.2" height="15.2" fill="#4ade80" opacity="0.25"/>
+  <rect x="8.4" y="26.4" width="34.2" height="15.2" fill="#f87171" opacity="0.25"/>
 
   <!-- Checkmark -->
   <polyline points="11,18 17,24 26,13" fill="none" stroke="url(#blueGrad)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
