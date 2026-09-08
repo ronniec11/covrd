@@ -1591,6 +1591,21 @@ export default function Canvas() {
           activeLFLine = null
           drawActiveLFPreview()
         }
+        // Same race for Rectangle (a tap-without-drag leaves a zero-size
+        // activeRect, its corners all coincident at the touch point) and
+        // Polygon (a stray 1-point activePoly) — undiscarded, the second
+        // finger's later single-finger continuation (or the next real tap,
+        // which often lands right back near that point) reads as grabbing
+        // that stray shape's handle/vertex and starts resizing it instead
+        // of leaving a blank canvas to start fresh on.
+        if (activeRect && (activeRect.maxX - activeRect.minX) < 2 && (activeRect.maxY - activeRect.minY) < 2) {
+          activeRect = null; rectFixed = null
+          drawActiveRectPreview()
+        }
+        if (activePoly && !activePoly.closed && activePoly.points.length <= 1) {
+          activePoly = null
+          drawActivePolyPreview()
+        }
         touchPainting = false; lastTouchPt = null; rectHandle = null
         polyDragMode = null; polyVertexIdx = null
         lfDragMode = null; lfVertexIdx = null
