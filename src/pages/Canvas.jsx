@@ -113,6 +113,7 @@ export default function Canvas() {
   const calLegendRef     = useRef(null)
   const reportModalRef   = useRef(null)
   const reportBodyRef    = useRef(null)
+  const printFrameRef    = useRef(null)
 
   const api = useRef({})
 
@@ -2458,42 +2459,53 @@ export default function Canvas() {
     // installed-to-homescreen iPad PWA, window.open() either fails or just
     // navigates the single PWA window away from the app with no visible
     // browser chrome to get back with, leaving the user stranded on the
-    // report with no way back. Printing still works: window.print() prints
-    // whatever's currently on screen, and the @media print rules below
-    // (see Canvas.css) hide everything except this overlay and force it to
-    // light/black-on-white regardless of the app's own dark/light theme.
-    function openDailyReport() {
-      if (!dayRecords.length) { alert('No history to report yet — save a session first.'); return }
+    // report with no way back. Printing is handled separately, via a
+    // hidden iframe — see printDailyReportPDF() below.
+    // Shared data for both the in-app overlay and the print/PDF output —
+    // built once, rendered two ways below.
+    function buildReportData() {
       const days = [...dayRecords].sort((a, b) => b.date.localeCompare(a.date))
       const maxSF = Math.max(...days.map(d => d.sessions.reduce((a, s) => a + s.sf, 0)), 1)
-
       let totalSF = 0, totalCrew = 0, totalHours = 0
-      const rows = days.map(d => {
+      const dayRows = days.map(d => {
         const sf = d.sessions.reduce((a, s) => a + s.sf, 0)
         const crew = d.sessions.reduce((a, s) => a + (s.crewSize || 0), 0)
         const hours = d.sessions.reduce((a, s) => a + (s.hoursWorked || 0), 0)
         totalSF += sf; totalCrew += crew; totalHours += hours
-        const pct = d.target > 0 ? Math.round((sf / d.target) * 100) : null
-        const barPct = sf > 0 ? Math.max((sf / maxSF) * 100, 2) : 0
-        return `
-          <tr>
-            <td>${formatDate(d.date)}</td>
-            <td class="ct-rep-bar-cell"><div class="ct-rep-bar-track"><div class="ct-rep-bar-fill" style="width:${barPct}%;background:${d.dayColor || '#4ade80'}"></div></div></td>
-            <td class="ct-rep-num">${Math.round(sf).toLocaleString()}</td>
-            <td class="ct-rep-num">${crew || '–'}</td>
-            <td class="ct-rep-num">${hours ? hours.toFixed(1) : '–'}</td>
-            <td class="ct-rep-num">${pct !== null ? pct + '%' : '–'}</td>
-          </tr>`
-      }).join('')
+        return {
+          date: d.date, dayColor: d.dayColor, sf, crew, hours,
+          pct: d.target > 0 ? Math.round((sf / d.target) * 100) : null,
+          barPct: sf > 0 ? Math.max((sf / maxSF) * 100, 2) : 0,
+        }
+      })
+      return {
+        dayRows, totalSF, totalCrew, totalHours,
+        label: projectName || activePage?.name || 'Floor Plan',
+        generated: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+        range: days.length ? `${formatDate(days[days.length - 1].date)} – ${formatDate(days[0].date)}` : '',
+      }
+    }
 
-      const label = projectName || activePage?.name || 'Floor Plan'
-      const generated = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-      const range = days.length ? `${formatDate(days[days.length - 1].date)} – ${formatDate(days[0].date)}` : ''
+    function reportRowsHtml(data, barClass, trackClass, fillClass, numClass) {
+      return data.dayRows.map(d => `
+        <tr>
+          <td>${formatDate(d.date)}</td>
+          <td class="${barClass}"><div class="${trackClass}"><div class="${fillClass}" style="width:${d.barPct}%;background:${d.dayColor || '#4ade80'}"></div></div></td>
+          <td class="${numClass}">${Math.round(d.sf).toLocaleString()}</td>
+          <td class="${numClass}">${d.crew || '–'}</td>
+          <td class="${numClass}">${d.hours ? d.hours.toFixed(1) : '–'}</td>
+          <td class="${numClass}">${d.pct !== null ? d.pct + '%' : '–'}</td>
+        </tr>`).join('')
+    }
 
+    function openDailyReport() {
+      if (!dayRecords.length) { alert('No history to report yet — save a session first.'); return }
+      const data = buildReportData()
+      const rows = reportRowsHtml(data, 'ct-rep-bar-cell', 'ct-rep-bar-track', 'ct-rep-bar-fill', 'ct-rep-num')
       const html = `
-        <div class="ct-rep-title">${label}</div>
+        <div class="ct-rep-title">${data.label}</div>
         ${projectDescription ? `<div class="ct-rep-desc">${projectDescription}</div>` : ''}
-        <div class="ct-rep-sub">${range} &nbsp;•&nbsp; Generated ${generated}</div>
+        <div class="ct-rep-sub">${data.range} &nbsp;•&nbsp; Generated ${data.generated}</div>
         <table class="ct-rep-table">
           <thead>
             <tr>
@@ -2510,9 +2522,9 @@ export default function Canvas() {
             <tr>
               <td>Total</td>
               <td></td>
-              <td class="ct-rep-num">${Math.round(totalSF).toLocaleString()}</td>
-              <td class="ct-rep-num">${totalCrew || '–'}</td>
-              <td class="ct-rep-num">${totalHours ? totalHours.toFixed(1) : '–'}</td>
+              <td class="ct-rep-num">${Math.round(data.totalSF).toLocaleString()}</td>
+              <td class="ct-rep-num">${data.totalCrew || '–'}</td>
+              <td class="ct-rep-num">${data.totalHours ? data.totalHours.toFixed(1) : '–'}</td>
               <td class="ct-rep-num"></td>
             </tr>
           </tfoot>
@@ -2523,6 +2535,81 @@ export default function Canvas() {
     }
     function closeDailyReport() {
       if (reportModalRef.current) reportModalRef.current.classList.remove('open')
+    }
+
+    // Prints via a hidden iframe with a fully self-contained document,
+    // instead of window.print() on the live app page or a new
+    // window/tab. iOS Safari's print pipeline for the app's own page
+    // rendered a screenshot of the current on-screen UI rather than
+    // applying @media print rules (confirmed on device) — an iframe is a
+    // genuinely separate document, so there's nothing of the app's own
+    // chrome for it to capture, and no new window that could strand the
+    // user the way window.open() did.
+    function printDailyReportPDF() {
+      if (!dayRecords.length) { alert('No history to report yet — save a session first.'); return }
+      const data = buildReportData()
+      const rows = reportRowsHtml(data, 'bar-cell', 'bar-track', 'bar-fill', 'num')
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Daily Production Report - ${data.label}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif; color: #1c1c1a; background: #fff; margin: 0; padding: 32px; }
+  h1 { font-size: 20px; margin: 0 0 2px; }
+  .desc { font-size: 13px; font-weight: 600; color: #16a34a; margin: 2px 0; }
+  .sub { font-size: 12px; color: #6b7280; margin-bottom: 20px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+  th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; font-weight: 700; }
+  td.num, th.num { text-align: right; }
+  .bar-cell { width: 200px; }
+  .bar-track { background: #f1f1ef; border-radius: 3px; height: 10px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; }
+  tfoot td { font-weight: 800; border-top: 2px solid #1c1c1a; border-bottom: none; }
+</style>
+</head>
+<body>
+  <h1>${data.label}</h1>
+  ${projectDescription ? `<div class="desc">${projectDescription}</div>` : ''}
+  <div class="sub">${data.range} &nbsp;•&nbsp; Generated ${data.generated}</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>SF / Day</th>
+        <th class="num">SF</th>
+        <th class="num">Crew</th>
+        <th class="num">Hours</th>
+        <th class="num">% of Target</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+    <tfoot>
+      <tr>
+        <td>Total</td>
+        <td></td>
+        <td class="num">${Math.round(data.totalSF).toLocaleString()}</td>
+        <td class="num">${data.totalCrew || '–'}</td>
+        <td class="num">${data.totalHours ? data.totalHours.toFixed(1) : '–'}</td>
+        <td class="num"></td>
+      </tr>
+    </tfoot>
+  </table>
+</body>
+</html>`
+
+      const frame = printFrameRef.current
+      if (!frame) return
+      const doc = frame.contentWindow.document
+      doc.open(); doc.write(html); doc.close()
+      // Let the iframe finish laying out before invoking print — calling it
+      // synchronously right after write() can race the initial render.
+      setTimeout(() => {
+        frame.contentWindow.focus()
+        frame.contentWindow.print()
+      }, 150)
     }
 
     // ── RESIZE ────────────────────────────────────────────────────────────────
@@ -3095,7 +3182,7 @@ export default function Canvas() {
     api.current = {
       setTool, startCalib, cancelCalib,
       doZoom, resetView,
-      openHistory, closeHistory, calPrevMonth, calNextMonth, openDailyReport, closeDailyReport,
+      openHistory, closeHistory, calPrevMonth, calNextMonth, openDailyReport, closeDailyReport, printDailyReportPDF,
       closeEditModal, saveEdit, startPaintEdit, startCountEdit,
       cancelSessionEdit, commitSessionEdit,
       closeSaveModal, confirmSaveSession,
@@ -3418,13 +3505,14 @@ export default function Canvas() {
           <div className="ct-report-header">
             <div className="ct-report-hdr-title">Daily Production Report</div>
             <div className="ct-report-hdr-btns">
-              <button className="ct-cal-btn" onClick={() => window.print()}>Print / Save as PDF</button>
+              <button className="ct-cal-btn" onClick={() => api.current.printDailyReportPDF?.()}>Print / Save as PDF</button>
               <button className="ct-cal-btn" onClick={() => api.current.closeDailyReport?.()}>Close</button>
             </div>
           </div>
           <div ref={reportBodyRef} className="ct-report-body" />
         </div>
       </div>
+      <iframe ref={printFrameRef} title="Print report" style={{position:'fixed',width:0,height:0,border:'none',visibility:'hidden'}} />
 
     </div>
   )

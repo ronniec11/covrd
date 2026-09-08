@@ -377,25 +377,8 @@
 .ct-rep-bar-track { background: var(--ct-surface-2); border-radius: 3px; height: 10px; overflow: hidden; }
 .ct-rep-bar-fill { height: 100%; border-radius: 3px; }
 .ct-rep-table tfoot td { font-weight: 800; border-top: 2px solid var(--ct-border); border-bottom: none; }
-
-/* Printing: show ONLY the report, always light/black-on-white regardless
-   of the app's current theme (dark mode wastes ink and looks wrong on
-   paper) — the standard "print just this element" trick: hide everything,
-   then re-show just the report box positioned to fill the page. */
-@media print {
-  body * { visibility: hidden; }
-  .ct-report-box, .ct-report-box * { visibility: visible; }
-  .ct-report-overlay { position: absolute; inset: auto; top: 0; left: 0; background: none; display: block; }
-  .ct-report-box {
-    position: absolute; top: 0; left: 0; width: 100%; max-width: none; max-height: none;
-    box-shadow: none; border: none; border-radius: 0;
-    background: #fff; color: #1c1c1a;
-  }
-  .ct-report-header { display: none; }
-  .ct-rep-title, .ct-rep-sub, .ct-rep-table th, .ct-rep-table td { color: #1c1c1a !important; }
-  .ct-rep-sub, .ct-rep-table th { color: #6b7280 !important; }
-  .ct-rep-desc { color: #16a34a !important; }
-  .ct-rep-table th, .ct-rep-table td { border-color: #e5e7eb !important; }
-  .ct-rep-table tfoot td { border-top-color: #1c1c1a !important; }
-  .ct-rep-bar-track { background: #f1f1ef !important; }
-}
+/* Printing goes through a hidden iframe with its own fully self-contained,
+   light-only document (see printDailyReportPDF() in Canvas.jsx) rather than
+   printing this overlay in place — iOS Safari's print pipeline rendered a
+   screenshot of the live app UI instead of applying @media print rules to
+   it (confirmed on device), so isolating via CSS here wasn't reliable. */
