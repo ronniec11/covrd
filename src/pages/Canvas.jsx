@@ -710,7 +710,10 @@ export default function Canvas() {
       drawCtx.setLineDash([])
       const HR = 6
       ;[[sx1, sy1], [sx2, sy1], [sx1, sy2], [sx2, sy2]].forEach(([hx, hy]) => {
-        drawCtx.fillStyle = '#fff'
+        // Semi-transparent fill so the floor plan underneath stays visible
+        // while lining up a corner precisely — a solid square hides exactly
+        // the spot you're trying to place it against.
+        drawCtx.fillStyle = 'rgba(255,255,255,0.5)'
         drawCtx.fillRect(hx - HR, hy - HR, HR * 2, HR * 2)
         drawCtx.strokeStyle = activeColor
         drawCtx.lineWidth = 2
@@ -847,7 +850,9 @@ export default function Canvas() {
         // the "click here to close" target once there are enough points.
         const isCloseTarget = !activePoly.closed && i === 0 && activePoly.points.length >= 3
         const r = isCloseTarget ? HR + 2 : HR
-        drawCtx.fillStyle = '#fff'
+        // Semi-transparent so the floor plan shows through while placing a
+        // vertex precisely, instead of a solid square hiding the spot.
+        drawCtx.fillStyle = 'rgba(255,255,255,0.5)'
         drawCtx.fillRect(sp.x - r, sp.y - r, r * 2, r * 2)
         drawCtx.strokeStyle = activeColor
         drawCtx.lineWidth = 2
@@ -969,7 +974,9 @@ export default function Canvas() {
         // the "click here to finish" target once there's a real segment.
         const isFinishTarget = !activeLFLine.finished && i === realScreenPts.length - 1 && activeLFLine.points.length >= 2
         const r = isFinishTarget ? HR + 2 : HR
-        drawCtx.fillStyle = '#fff'
+        // Semi-transparent so the floor plan shows through while placing a
+        // point precisely, instead of a solid square hiding the spot.
+        drawCtx.fillStyle = 'rgba(255,255,255,0.5)'
         drawCtx.fillRect(sp.x - r, sp.y - r, r * 2, r * 2)
         drawCtx.strokeStyle = activeColor
         drawCtx.lineWidth = 2
