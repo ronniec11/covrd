@@ -11,6 +11,7 @@ const REPORT_COLUMNS = [
   { key: 'date', label: 'Date' },
   { key: 'time', label: 'Time' },
   { key: 'sf', label: 'SF' },
+  { key: 'lf', label: 'LF' },
   { key: 'countItems', label: 'Count Items' },
   { key: 'crewSize', label: 'Crew Size' },
   { key: 'hoursWorked', label: 'Hours Worked' },
@@ -41,6 +42,7 @@ function shapeRow(s) {
   const crew = s.crew_size ?? null
   const hours = s.hours_worked ?? null
   const sf = parseFloat(s.sf) || 0
+  const lf = parseFloat(s.lf) || 0
   const sfPerPersonHour = (crew > 0 && hours > 0) ? sf / (crew * hours) : null
   return {
     person: s.profiles?.full_name || 'Unknown',
@@ -49,6 +51,7 @@ function shapeRow(s) {
     date: s.work_date || '',
     time: s.created_at ? new Date(s.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
     sf: Math.round(sf),
+    lf: Math.round(lf),
     countItems: countItemsFor(s.count_data),
     crewSize: crew ?? '',
     hoursWorked: hours ?? '',
@@ -92,8 +95,9 @@ export default function Reports() {
       const pageIds = (pgs || []).map(p => p.id)
       if (pageIds.length === 0) { setRows([]); setHasRun(true); return }
 
-      const FULL_COLUMNS = 'id, page_id, user_id, name, sf, work_date, created_at, count_data, crew_size, hours_worked, profiles(full_name), pages(name, project_id, projects(name))'
-      const FALLBACK_COLUMNS = 'id, page_id, user_id, name, sf, work_date, created_at, count_data, profiles(full_name), pages(name, project_id, projects(name))'
+      const FULL_COLUMNS = 'id, page_id, user_id, name, sf, lf, work_date, created_at, count_data, crew_size, hours_worked, profiles(full_name), pages(name, project_id, projects(name))'
+      const NO_LF_COLUMNS = 'id, page_id, user_id, name, sf, work_date, created_at, count_data, crew_size, hours_worked, profiles(full_name), pages(name, project_id, projects(name))'
+      const MINIMAL_COLUMNS = 'id, page_id, user_id, name, sf, work_date, created_at, count_data, profiles(full_name), pages(name, project_id, projects(name))'
 
       function buildQuery(columns) {
         let q = supabase.from('sessions').select(columns).in('page_id', pageIds)
@@ -105,11 +109,19 @@ export default function Reports() {
 
       let { data, error: sessErr } = await buildQuery(FULL_COLUMNS)
       let missingMigration = false
+      // lf and crew_size/hours_worked are two independent migrations — either
+      // (or both) might not have been run yet, so these fall back one at a
+      // time rather than assuming they're always missing together.
+      if (sessErr && /\blf\b/.test(sessErr.message)) {
+        console.warn('[Reports] lf column not found, retrying without it — run the migration noted in Canvas.jsx / supabase-schema.sql.')
+        missingMigration = true
+        ;({ data, error: sessErr } = await buildQuery(NO_LF_COLUMNS))
+      }
       if (sessErr && /crew_size|hours_worked/.test(sessErr.message)) {
         // Pre-migration DB — retry without the not-yet-existing columns.
         console.warn('[Reports] crew_size/hours_worked columns not found, retrying without them — run the migration noted in Canvas.jsx / supabase-schema.sql.')
         missingMigration = true
-        ;({ data, error: sessErr } = await buildQuery(FALLBACK_COLUMNS))
+        ;({ data, error: sessErr } = await buildQuery(MINIMAL_COLUMNS))
       }
       if (sessErr) throw sessErr
       setMigrationMissing(missingMigration)
@@ -191,7 +203,7 @@ export default function Reports() {
 
         {!error && hasRun && migrationMissing && (
           <div className="mb-4 px-4 py-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-sm text-yellow-800 dark:text-yellow-200">
-            Crew Size / Hours Worked columns don't exist in the database yet, so those two fields are blank below for every row. Run the migration noted in Canvas.jsx / supabase-schema.sql (ALTER TABLE ... crew_size / hours_worked) in the Supabase SQL editor, then run this report again.
+            Some columns (Linear Footage and/or Crew Size / Hours Worked) don't exist in the database yet, so those fields are blank below for every row. Run the migrations noted in Canvas.jsx / supabase-schema.sql (ALTER TABLE ... lf / lf_data / crew_size / hours_worked) in the Supabase SQL editor, then run this report again.
           </div>
         )}
 
@@ -216,6 +228,7 @@ export default function Reports() {
                     <th className="py-2 pr-4">Date</th>
                     <th className="py-2 pr-4">Time</th>
                     <th className="py-2 pr-4 text-right">SF</th>
+                    <th className="py-2 pr-4 text-right">LF</th>
                     <th className="py-2 pr-4 text-right">Count</th>
                     <th className="py-2 pr-4 text-right">Crew</th>
                     <th className="py-2 pr-4 text-right">Hours</th>
@@ -231,6 +244,7 @@ export default function Reports() {
                       <td className="py-2 pr-4">{r.date}</td>
                       <td className="py-2 pr-4">{r.time}</td>
                       <td className="py-2 pr-4 text-right">{r.sf.toLocaleString()}</td>
+                      <td className="py-2 pr-4 text-right">{r.lf ? r.lf.toLocaleString() : '—'}</td>
                       <td className="py-2 pr-4 text-right">{r.countItems || '—'}</td>
                       <td className="py-2 pr-4 text-right">{r.crewSize || '—'}</td>
                       <td className="py-2 pr-4 text-right">{r.hoursWorked || '—'}</td>

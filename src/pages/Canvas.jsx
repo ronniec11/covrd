@@ -14,6 +14,13 @@ import './Canvas.css'
 // (used by the production tracking report — see src/pages/Reports.jsx):
 // ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS crew_size integer;
 // ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS hours_worked numeric;
+//
+// NOTE: Run this migration to enable the Linear Footage tool:
+// ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS lf numeric;
+// ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS lf_data jsonb;
+// lf is the session's total linear footage (denormalized, like sf/count);
+// lf_data holds {w, h, lines: [{points, color}, ...]} — same cross-device
+// rescaling shape as count_data.
 
 const COLORS = [
   '#facc15','#4ade80','#60a5fa','#f97316','#f472b6','#a78bfa',
@@ -71,6 +78,7 @@ export default function Canvas() {
   const btnCountRef      = useRef(null)   // count tool button
   const btnRectRef       = useRef(null)   // rectangle tool button
   const btnPolyRef       = useRef(null)   // polygon tool button
+  const btnLFRef         = useRef(null)   // linear footage tool button
   const brushRangeRef    = useRef(null)
   const brushValRef      = useRef(null)
   const colorGridRef     = useRef(null)
@@ -92,6 +100,7 @@ export default function Canvas() {
   const editModalRef     = useRef(null)
   const editNameRef      = useRef(null)
   const editSFRef        = useRef(null)
+  const editLFRef        = useRef(null)
   const editColorsRef    = useRef(null)
   const editCountRef     = useRef(null)
   const editCrewRef      = useRef(null)
@@ -209,6 +218,22 @@ export default function Canvas() {
     let polyVertexIdx = null   // index into activePoly.points being dragged, when polyDragMode === 'vertex'
     let polyMoveStart = null   // image-space pointer position when a move-drag started
     let polyMoveOrig  = null   // activePoly.points snapshot when a move-drag started
+
+    // Linear Footage tool — click to place each point of an open polyline
+    // (image-space); tracked as data (like count markers), not rasterized —
+    // LF is exact geometry (segment lengths / ppf), not a pixel count.
+    // "Finished" (clicking the last point again, or the pointer leaving the
+    // canvas with 2+ points placed) makes it a live, adjustable line exactly
+    // like the polygon: drag a vertex handle to reshape it, drag the line
+    // itself to move the whole thing, click away to commit it into
+    // liveLFLines (the finished, saved-with-the-session lines for this
+    // page — analogous to liveCountMarkers).
+    let liveLFLines   = []     // [{id, points: [{x,y}, ...], color}, ...] in image coords
+    let activeLFLine  = null   // {points: [{x,y}, ...], finished: boolean} | null
+    let lfDragMode    = null   // 'vertex' | 'move' | null
+    let lfVertexIdx   = null   // index into activeLFLine.points being dragged, when lfDragMode === 'vertex'
+    let lfMoveStart   = null   // image-space pointer position when a move-drag started
+    let lfMoveOrig    = null   // activeLFLine.points snapshot when a move-drag started
 
     // Session composite cache
     let sessionsHL    = document.createElement('canvas')
@@ -483,13 +508,14 @@ export default function Canvas() {
         planCtx.drawImage(img, 0, 0); planCtx.restore()
       }
 
-      redrawHL(); redrawPen(); drawCountLayer()
+      redrawHL(); redrawPen(); drawMarkersLayer()
       // An active (not-yet-baked) rectangle/polygon stays adjustable across
       // pan/zoom (mouse wheel, pinch, or the OSD viewport on tiled iPad
       // pages), so its preview needs to track the same transform as
       // everything else here.
       if (activeRect) drawActiveRectPreview()
       if (activePoly) drawActivePolyPreview()
+      if (activeLFLine) drawActiveLFPreview()
     }
 
     function redrawHL() {
@@ -526,7 +552,7 @@ export default function Canvas() {
     }
 
     // ── COUNT LAYER ───────────────────────────────────────────────────────────
-    function drawCountLayer() {
+    function drawMarkersLayer() {
       if (!activePage) return
       countCtx.clearRect(0, 0, cW, cH)
       const z = activePage.zoom, p = activePage.pan
@@ -568,6 +594,54 @@ export default function Canvas() {
         countCtx.fillText(isHovered ? '\u00d7' : String(m.num), sx, sy)
         countCtx.restore()
       })
+
+      // Linear footage lines \u2014 committed (finished, baked) ones from saved
+      // sessions plus this session's own liveLFLines. The in-progress
+      // activeLFLine (still being placed/adjusted) is drawn separately by
+      // drawActiveLFPreview() on drawCtx, same split as rect/poly.
+      const allLines = []
+      if (!soloSession) {
+        activePage.sessions.forEach(s => {
+          if (!s._hidden && s.lfLines) s.lfLines.forEach(l => allLines.push(l))
+        })
+        liveLFLines.forEach(l => allLines.push(l))
+      } else if (soloSession.lfLines) {
+        soloSession.lfLines.forEach(l => allLines.push(l))
+      }
+      allLines.forEach(l => {
+        if (!l.points || l.points.length < 2) return
+        const screenPts = l.points.map(pt => ({x: pt.x * z + p.x, y: pt.y * z + p.y}))
+        countCtx.save()
+        countCtx.strokeStyle = l.color || '#4ade80'
+        countCtx.lineWidth = 3
+        countCtx.lineCap = 'round'
+        countCtx.lineJoin = 'round'
+        countCtx.beginPath()
+        countCtx.moveTo(screenPts[0].x, screenPts[0].y)
+        for (let i = 1; i < screenPts.length; i++) countCtx.lineTo(screenPts[i].x, screenPts[i].y)
+        countCtx.stroke()
+        screenPts.forEach(sp => {
+          countCtx.beginPath()
+          countCtx.arc(sp.x, sp.y, 3, 0, Math.PI * 2)
+          countCtx.fillStyle = l.color || '#4ade80'
+          countCtx.fill()
+        })
+        const lf = toLF(lineLengthPx(l.points))
+        const midIdx = Math.floor((screenPts.length - 1) / 2)
+        const mid = screenPts.length % 2 === 1
+          ? screenPts[Math.floor(screenPts.length / 2)]
+          : {x: (screenPts[midIdx].x + screenPts[midIdx + 1].x) / 2, y: (screenPts[midIdx].y + screenPts[midIdx + 1].y) / 2}
+        const label = Math.round(lf).toLocaleString() + ' LF'
+        countCtx.font = 'bold 11px system-ui,sans-serif'
+        const tw = countCtx.measureText(label).width
+        countCtx.fillStyle = 'rgba(0,0,0,0.7)'
+        countCtx.fillRect(mid.x - tw / 2 - 4, mid.y - 20, tw + 8, 16)
+        countCtx.fillStyle = '#fff'
+        countCtx.textAlign = 'center'
+        countCtx.textBaseline = 'middle'
+        countCtx.fillText(label, mid.x, mid.y - 12)
+        countCtx.restore()
+      })
     }
 
     function placeCountMarker(sx, sy) {
@@ -579,7 +653,7 @@ export default function Canvas() {
         num: liveCountMarkers.length + 1,
         color: activeColor,
       })
-      drawCountLayer()
+      drawMarkersLayer()
       updateUnsaved(true)
     }
 
@@ -827,6 +901,114 @@ export default function Canvas() {
       if (checkHasLiveContent()) updateUnsaved(true)
     }
 
+    // ── LINEAR FOOTAGE TOOL ───────────────────────────────────────────────────
+    function lineLengthPx(points) {
+      let len = 0
+      for (let i = 1; i < points.length; i++) len += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y)
+      return len
+    }
+    function toLF(px) { return activePage ? px / activePage.ppf : 0 }
+
+    function hitLFVertex(sx, sy) {
+      if (!activeLFLine || !activePage) return null
+      const z = activePage.zoom, p = activePage.pan
+      for (let i = 0; i < activeLFLine.points.length; i++) {
+        const hx = activeLFLine.points[i].x * z + p.x, hy = activeLFLine.points[i].y * z + p.y
+        if (Math.hypot(sx - hx, sy - hy) < 16) return i
+      }
+      return null
+    }
+
+    // Screen-space distance from a point to the nearest point on a segment —
+    // used to grab-and-move a finished line by clicking anywhere along it,
+    // not just on an endpoint handle.
+    function distToSegment(pt, a, b) {
+      const dx = b.x - a.x, dy = b.y - a.y
+      const lenSq = dx * dx + dy * dy
+      if (lenSq === 0) return Math.hypot(pt.x - a.x, pt.y - a.y)
+      let t = ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / lenSq
+      t = Math.max(0, Math.min(1, t))
+      return Math.hypot(pt.x - (a.x + t * dx), pt.y - (a.y + t * dy))
+    }
+    function hitLFLineBody(sx, sy) {
+      if (!activeLFLine || !activePage) return false
+      const z = activePage.zoom, p = activePage.pan
+      for (let i = 1; i < activeLFLine.points.length; i++) {
+        const a = {x: activeLFLine.points[i - 1].x * z + p.x, y: activeLFLine.points[i - 1].y * z + p.y}
+        const b = {x: activeLFLine.points[i].x * z + p.x, y: activeLFLine.points[i].y * z + p.y}
+        if (distToSegment({x: sx, y: sy}, a, b) < 12) return true
+      }
+      return false
+    }
+
+    function drawActiveLFPreview(cursorPos) {
+      drawCtx.clearRect(0, 0, cW, cH)
+      if (!activeLFLine || !activePage || activeLFLine.points.length === 0) return
+      // Same "nothing real to show yet" guard as the rectangle/polygon tools.
+      if (activeLFLine.points.length === 1 && !activeLFLine.finished && !cursorPos) return
+      const z = activePage.zoom, p = activePage.pan
+      const cursorImgPt = (!activeLFLine.finished && cursorPos) ? s2i(cursorPos.x, cursorPos.y) : null
+      const effectivePoints = cursorImgPt ? [...activeLFLine.points, cursorImgPt] : activeLFLine.points
+      const screenPts = effectivePoints.map(pt => ({x: pt.x * z + p.x, y: pt.y * z + p.y}))
+
+      drawCtx.save()
+      drawCtx.beginPath()
+      drawCtx.moveTo(screenPts[0].x, screenPts[0].y)
+      for (let i = 1; i < screenPts.length; i++) drawCtx.lineTo(screenPts[i].x, screenPts[i].y)
+      drawCtx.strokeStyle = activeColor
+      drawCtx.lineWidth = 3
+      drawCtx.setLineDash(activeLFLine.finished ? [] : [6, 4])
+      drawCtx.stroke()
+      drawCtx.setLineDash([])
+      drawCtx.restore()
+
+      const HR = 6
+      const realScreenPts = activeLFLine.points.map(pt => ({x: pt.x * z + p.x, y: pt.y * z + p.y}))
+      realScreenPts.forEach((sp, i) => {
+        // The last vertex is drawn larger while still placing points — it's
+        // the "click here to finish" target once there's a real segment.
+        const isFinishTarget = !activeLFLine.finished && i === realScreenPts.length - 1 && activeLFLine.points.length >= 2
+        const r = isFinishTarget ? HR + 2 : HR
+        drawCtx.fillStyle = '#fff'
+        drawCtx.fillRect(sp.x - r, sp.y - r, r * 2, r * 2)
+        drawCtx.strokeStyle = activeColor
+        drawCtx.lineWidth = 2
+        drawCtx.strokeRect(sp.x - r, sp.y - r, r * 2, r * 2)
+      })
+
+      if (effectivePoints.length >= 2) {
+        const lf = Math.round(toLF(lineLengthPx(effectivePoints)))
+        const label = lf.toLocaleString() + ' LF'
+        const minX = Math.min(...screenPts.map(sp => sp.x))
+        const minY = Math.min(...screenPts.map(sp => sp.y))
+        drawCtx.save()
+        drawCtx.font = 'bold 12px system-ui,sans-serif'
+        const tw = drawCtx.measureText(label).width
+        drawCtx.fillStyle = 'rgba(0,0,0,0.75)'
+        drawCtx.fillRect(minX - 4, minY - 24, tw + 8, 18)
+        drawCtx.fillStyle = '#fff'
+        drawCtx.fillText(label, minX, minY - 10)
+        drawCtx.restore()
+      }
+    }
+
+    // Commits the finished line into liveLFLines — tracked as exact
+    // geometry (like count markers), not rasterized into any highlight
+    // canvas, since LF is a length (segment distances / ppf), not an area.
+    // Discards silently if it never made it to a valid, finished 2+-point line.
+    function commitLFLine() {
+      if (!activeLFLine) return
+      if (!activeLFLine.finished || activeLFLine.points.length < 2) {
+        activeLFLine = null; lfDragMode = null; lfVertexIdx = null
+        drawActiveLFPreview(); return
+      }
+      liveLFLines.push({id: Date.now(), points: activeLFLine.points, color: activeColor})
+      activeLFLine = null; lfDragMode = null; lfVertexIdx = null
+      drawActiveLFPreview()
+      drawMarkersLayer()
+      updateUnsaved(true)
+    }
+
     function tintCanvas(src, hexColor) {
       try {
         if (!src || !hexColor || src.width === 0 || src.height === 0) return null
@@ -863,6 +1045,7 @@ export default function Canvas() {
       if (liveCountMarkers.length > 0) return true
       if (activeRect && (activeRect.maxX - activeRect.minX) >= 2 && (activeRect.maxY - activeRect.minY) >= 2) return true
       if (activePoly && activePoly.points.length > 0) return true
+      if (liveLFLines.length > 0 || (activeLFLine && activeLFLine.points.length > 0)) return true
       const hd = liveHlCtx.getImageData(0, 0, liveHlCanvas.width, liveHlCanvas.height).data
       for (let i = 3; i < hd.length; i += 4) if (hd[i] > 10) return true
       return false
@@ -965,6 +1148,39 @@ export default function Canvas() {
           drawActivePolyPreview(); updateUnsaved(true)
           return
         }
+        if (tool === 'lf') {
+          const pt = s2i(pos.x, pos.y)
+          if (activeLFLine && activeLFLine.finished) {
+            const vIdx = hitLFVertex(pos.x, pos.y)
+            if (vIdx !== null) { lfDragMode = 'vertex'; lfVertexIdx = vIdx; return }
+            if (hitLFLineBody(pos.x, pos.y)) {
+              lfDragMode = 'move'; lfMoveStart = pt; lfMoveOrig = activeLFLine.points.map(p => ({...p})); return
+            }
+            // Same "click outside finalizes, doesn't start a new one" rule as rect/poly.
+            commitLFLine()
+            return
+          }
+          if (activeLFLine && !activeLFLine.finished) {
+            // Clicking back on the last vertex finishes the line instead of
+            // adding a duplicate point on top of it.
+            if (activeLFLine.points.length >= 2) {
+              const last = activeLFLine.points[activeLFLine.points.length - 1]
+              const sx = last.x * activePage.zoom + activePage.pan.x
+              const sy = last.y * activePage.zoom + activePage.pan.y
+              if (Math.hypot(pos.x - sx, pos.y - sy) < 16) {
+                activeLFLine.finished = true
+                drawActiveLFPreview(); updateUnsaved(true)
+                return
+              }
+            }
+            activeLFLine.points.push(pt)
+            drawActiveLFPreview(); updateUnsaved(true)
+            return
+          }
+          activeLFLine = {points: [pt], finished: false}
+          drawActiveLFPreview(); updateUnsaved(true)
+          return
+        }
         if (tool === 'count') {
           const hit = liveCountMarkers.findIndex(m => {
             const sx = m.x * activePage.zoom + activePage.pan.x
@@ -974,7 +1190,7 @@ export default function Canvas() {
           if (hit !== -1) {
             liveCountMarkers.splice(hit, 1)
             liveCountMarkers.forEach((m, i) => m.num = i + 1)
-            drawCountLayer(); updateUnsaved(true); return
+            drawMarkersLayer(); updateUnsaved(true); return
           }
           placeCountMarker(pos.x, pos.y); return
         }
@@ -1009,7 +1225,7 @@ export default function Canvas() {
             return Math.hypot(pos.x - sx, pos.y - sy) < 20
           })
           hoveredMarkerId = hit?.id || null
-          if (hoveredMarkerId !== prev) drawCountLayer()
+          if (hoveredMarkerId !== prev) drawMarkersLayer()
           drawEl.style.cursor = hoveredMarkerId ? 'pointer' : 'crosshair'
         }
       } else if (tool === 'rect') {
@@ -1040,6 +1256,22 @@ export default function Canvas() {
             drawEl.style.cursor = 'crosshair'
             // Rubber-band preview of the next segment while still placing points.
             if (activePoly) drawActivePolyPreview(pos)
+          }
+        }
+      } else if (tool === 'lf') {
+        ring.style.display = 'none'
+        if (activePage && !lfDragMode) {
+          if (activeLFLine && activeLFLine.finished) {
+            const vIdx = hitLFVertex(pos.x, pos.y)
+            if (vIdx !== null) {
+              drawEl.style.cursor = 'pointer'
+            } else {
+              drawEl.style.cursor = hitLFLineBody(pos.x, pos.y) ? 'move' : 'crosshair'
+            }
+          } else {
+            drawEl.style.cursor = 'crosshair'
+            // Rubber-band preview of the next segment while still placing points.
+            if (activeLFLine) drawActiveLFPreview(pos)
           }
         }
       } else {
@@ -1081,6 +1313,17 @@ export default function Canvas() {
         drawActivePolyPreview(); updateSFDisplay(); updateUnsaved(checkHasLiveContent())
         return
       }
+      if (tool === 'lf' && lfDragMode) {
+        const pt = s2i(pos.x, pos.y)
+        if (lfDragMode === 'move') {
+          const dx = pt.x - lfMoveStart.x, dy = pt.y - lfMoveStart.y
+          activeLFLine.points = lfMoveOrig.map(p => ({x: p.x + dx, y: p.y + dy}))
+        } else {
+          activeLFLine.points[lfVertexIdx] = pt
+        }
+        drawActiveLFPreview(); updateUnsaved(checkHasLiveContent())
+        return
+      }
       if (isPainting) {
         const pt = s2i(pos.x, pos.y)
         doPaint(pt.x, pt.y, lastPenPt); lastPenPt = pt
@@ -1090,6 +1333,7 @@ export default function Canvas() {
     function onUp() {
       rectHandle = null
       polyDragMode = null; polyVertexIdx = null
+      lfDragMode = null; lfVertexIdx = null
       if (isPainting) {
         isPainting = false; lastPenPt = null
         cancelAnimationFrame(rafId); rafId = 0
@@ -1119,7 +1363,17 @@ export default function Canvas() {
         }
         drawActivePolyPreview()
       }
-      if (hoveredMarkerId !== null) { hoveredMarkerId = null; drawCountLayer() }
+      if (activeLFLine) {
+        // Same idea as the polygon: pointer leaving the canvas while still
+        // placing points finishes it if it's a valid line already (2+
+        // points), else there's nothing meaningful to keep.
+        if (!activeLFLine.finished) {
+          if (activeLFLine.points.length >= 2) activeLFLine.finished = true
+          else activeLFLine = null
+        }
+        drawActiveLFPreview()
+      }
+      if (hoveredMarkerId !== null) { hoveredMarkerId = null; drawMarkersLayer() }
     }
 
     // ── SMOOTH STROKE PAINTING ────────────────────────────────────────────────
@@ -1181,7 +1435,7 @@ export default function Canvas() {
       // longer under the cursor, looking like it randomly pops up. Clearing
       // it here and letting the next real pointer move re-evaluate fresh
       // avoids that stale state.
-      if (hoveredMarkerId !== null) { hoveredMarkerId = null; drawCountLayer() }
+      if (hoveredMarkerId !== null) { hoveredMarkerId = null; drawMarkersLayer() }
       if (osdViewer) {
         const refPoint = osdViewer.viewport.pointFromPixel(new OpenSeadragon.Point(sx, sy), true)
         osdViewer.viewport.zoomBy(f, refPoint, true)
@@ -1289,6 +1543,18 @@ export default function Canvas() {
         }
         return
       }
+      if (tool === 'lf') {
+        if (activeLFLine && !activeLFLine.finished) {
+          activeLFLine.points.pop()
+          if (activeLFLine.points.length === 0) activeLFLine = null
+          drawActiveLFPreview()
+        } else if (!activeLFLine) {
+          // activeLFLine can only be null here if tap-1 was a "click
+          // outside" that just committed a finished line — undo that.
+          undoLast()
+        }
+        return
+      }
       undoLast()
     }
 
@@ -1317,6 +1583,7 @@ export default function Canvas() {
         if (touchJustPlacedMarker) { undoLast(); touchJustPlacedMarker = false }
         touchPainting = false; lastTouchPt = null; rectHandle = null
         polyDragMode = null; polyVertexIdx = null
+        lfDragMode = null; lfVertexIdx = null
         const r = drawEl.getBoundingClientRect()
         const t0 = e.touches[0], t1 = e.touches[1]
         const mx = ((t0.clientX + t1.clientX) / 2) - r.left
@@ -1398,6 +1665,36 @@ export default function Canvas() {
         drawActivePolyPreview(); updateUnsaved(true)
         return
       }
+      if (tool === 'lf') {
+        const pt = s2i(pos.x, pos.y)
+        if (activeLFLine && activeLFLine.finished) {
+          const vIdx = hitLFVertex(pos.x, pos.y)
+          if (vIdx !== null) { lfDragMode = 'vertex'; lfVertexIdx = vIdx; return }
+          if (hitLFLineBody(pos.x, pos.y)) {
+            lfDragMode = 'move'; lfMoveStart = pt; lfMoveOrig = activeLFLine.points.map(p => ({...p})); return
+          }
+          commitLFLine()
+          return
+        }
+        if (activeLFLine && !activeLFLine.finished) {
+          if (activeLFLine.points.length >= 2) {
+            const last = activeLFLine.points[activeLFLine.points.length - 1]
+            const sx = last.x * activePage.zoom + activePage.pan.x
+            const sy = last.y * activePage.zoom + activePage.pan.y
+            if (Math.hypot(pos.x - sx, pos.y - sy) < 20) {  // slightly larger tap target for touch
+              activeLFLine.finished = true
+              drawActiveLFPreview(); updateUnsaved(true)
+              return
+            }
+          }
+          activeLFLine.points.push(pt)
+          drawActiveLFPreview(); updateUnsaved(true)
+          return
+        }
+        activeLFLine = {points: [pt], finished: false}
+        drawActiveLFPreview(); updateUnsaved(true)
+        return
+      }
       if (tool === 'count') {
         const hit = liveCountMarkers.findIndex(m => {
           const sx = m.x * activePage.zoom + activePage.pan.x
@@ -1407,7 +1704,7 @@ export default function Canvas() {
         if (hit !== -1) {
           liveCountMarkers.splice(hit, 1)
           liveCountMarkers.forEach((m, i) => m.num = i + 1)
-          drawCountLayer(); updateUnsaved(true); return
+          drawMarkersLayer(); updateUnsaved(true); return
         }
         placeCountMarker(pos.x, pos.y); touchJustPlacedMarker = true; return
       }
@@ -1469,6 +1766,18 @@ export default function Canvas() {
         drawActivePolyPreview(); updateSFDisplay(); updateUnsaved(checkHasLiveContent())
         return
       }
+      if (tool === 'lf' && lfDragMode) {
+        const pos = getTouchPos(e)
+        const pt = s2i(pos.x, pos.y)
+        if (lfDragMode === 'move') {
+          const dx = pt.x - lfMoveStart.x, dy = pt.y - lfMoveStart.y
+          activeLFLine.points = lfMoveOrig.map(p => ({x: p.x + dx, y: p.y + dy}))
+        } else {
+          activeLFLine.points[lfVertexIdx] = pt
+        }
+        drawActiveLFPreview(); updateUnsaved(checkHasLiveContent())
+        return
+      }
       if (!touchPainting) return
       const pos = getTouchPos(e)
       const pt = s2i(pos.x, pos.y)
@@ -1494,6 +1803,7 @@ export default function Canvas() {
       pinchLastDist = 0; pinchLastMid = null
       rectHandle = null
       polyDragMode = null; polyVertexIdx = null
+      lfDragMode = null; lfVertexIdx = null
       cancelAnimationFrame(rafId); rafId = 0
       clipLiveHLAgainstSessions()
       redrawAll(); updateSF()
@@ -1635,6 +1945,7 @@ export default function Canvas() {
       // shape is still active) bakes it into the highlight layer so it isn't lost.
       if (tool === 'rect' && t !== 'rect' && activeRect) bakeActiveRect()
       if (tool === 'poly' && t !== 'poly' && activePoly) bakePolygon()
+      if (tool === 'lf' && t !== 'lf' && activeLFLine) commitLFLine()
       if (tool !== 'erase' && t !== 'erase' && t !== 'count') prevTool = t
       tool = t
       if (btnHlRef.current)    btnHlRef.current.className    = 'ct-tbtn' + (t === 'highlight' ? ' t-hl' : '')
@@ -1643,7 +1954,8 @@ export default function Canvas() {
       if (btnCountRef.current) btnCountRef.current.className = 'ct-tbtn' + (t === 'count'     ? ' t-count' : '')
       if (btnRectRef.current)  btnRectRef.current.className  = 'ct-tbtn' + (t === 'rect'      ? ' t-rect' : '')
       if (btnPolyRef.current)  btnPolyRef.current.className  = 'ct-tbtn' + (t === 'poly'      ? ' t-poly' : '')
-      if (t !== 'rect' && t !== 'poly') drawCtx.clearRect(0, 0, cW, cH)
+      if (btnLFRef.current)    btnLFRef.current.className    = 'ct-tbtn' + (t === 'lf'        ? ' t-lf' : '')
+      if (t !== 'rect' && t !== 'poly' && t !== 'lf') drawCtx.clearRect(0, 0, cW, cH)
     }
 
     function updateBrush() {
@@ -1657,10 +1969,11 @@ export default function Canvas() {
       const match = colorGridRef.current.querySelector(`[data-c="${hex}"]`)
       if (match) match.classList.add('sel')
       if (tool === 'erase') setTool(prevTool)
-      // Reflect the new color on an active (not-yet-baked) rectangle/polygon
-      // right away, rather than waiting for the pointer to re-enter the canvas.
+      // Reflect the new color on an active (not-yet-baked) rectangle/polygon/
+      // line right away, rather than waiting for the pointer to re-enter the canvas.
       if (activeRect) drawActiveRectPreview()
       if (activePoly) drawActivePolyPreview()
+      if (activeLFLine) drawActiveLFPreview()
     }
 
     // ── UNDO ─────────────────────────────────────────────────────────────────
@@ -1669,7 +1982,15 @@ export default function Canvas() {
       if (tool === 'count' && liveCountMarkers.length > 0) {
         liveCountMarkers.pop()
         liveCountMarkers.forEach((m, i) => m.num = i + 1)
-        drawCountLayer()
+        drawMarkersLayer()
+        updateUnsaved(checkHasLiveContent())
+        return
+      }
+      // LF tool: pop last finished line directly (same reasoning — a
+      // committed line isn't in the undo stack either, it's tracked data).
+      if (tool === 'lf' && liveLFLines.length > 0) {
+        liveLFLines.pop()
+        drawMarkersLayer()
         updateUnsaved(checkHasLiveContent())
         return
       }
@@ -1687,13 +2008,14 @@ export default function Canvas() {
       if (!activePage) { showToast('No floor plan loaded', true); return }
       if (activeRect) bakeActiveRect()
       if (activePoly) bakePolygon()
+      if (activeLFLine) commitLFLine()
       ensureLive()
 
       const hd  = liveHlCtx.getImageData(0, 0, liveHlCanvas.width, liveHlCanvas.height).data
       const pd  = livePenCtx.getImageData(0, 0, livePenCanvas.width, livePenCanvas.height).data
       let hasHL = false; for (let i = 3; i < hd.length; i += 4) { if (hd[i] > 10) { hasHL = true; break } }
       let hasPen = false; for (let i = 3; i < pd.length; i += 4) { if (pd[i] > 10) { hasPen = true; break } }
-      if (!hasHL && !hasPen && liveCountMarkers.length === 0) {
+      if (!hasHL && !hasPen && liveCountMarkers.length === 0 && liveLFLines.length === 0) {
         showToast('Nothing to save — paint first!', true); return
       }
       openSaveModal()
@@ -1725,6 +2047,7 @@ export default function Canvas() {
 
       const sf   = toSF(countPx(liveHlCanvas))
       const countTotal = liveCountMarkers.length
+      const lfTotal = liveLFLines.reduce((a, l) => a + toLF(lineLengthPx(l.points)), 0)
       const date = saveDateRef.current?.value || getCurrentDate()
       const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})
 
@@ -1740,15 +2063,17 @@ export default function Canvas() {
       if (snapPenCtx && snapPen.width > 0) snapPenCtx.drawImage(livePenCanvas, 0, 0)
 
       const snapCount = [...liveCountMarkers]
+      const snapLFLines = liveLFLines.map(l => ({...l, points: l.points.map(p => ({...p}))}))
 
       const session = {
         id: sessionCounter++, name: sessionName,
         color: activeColor,
         userColor: userProfile?.avatar_color || activeColor,
         userName: userProfile?.full_name || user.email?.split('@')[0] || 'User',
-        sf, count: countTotal, date, time,
+        sf, count: countTotal, lf: lfTotal, date, time,
         hlCanvas: snapHL, penCanvas: snapPen,
         countMarkers: snapCount,
+        lfLines: snapLFLines,
         crewSize, hoursWorked,
         pageId: activePage.id, pageName: activePage.name,
       }
@@ -1759,6 +2084,7 @@ export default function Canvas() {
       liveHlCtx.clearRect(0, 0, liveHlCanvas.width, liveHlCanvas.height)
       livePenCtx.clearRect(0, 0, livePenCanvas.width, livePenCanvas.height)
       liveCountMarkers = []
+      liveLFLines = []
       undoStack = []
       if (hdrSessionRef.current) hdrSessionRef.current.textContent = '0'
 
@@ -1825,6 +2151,13 @@ export default function Canvas() {
             : null,
           crew_size:      session.crewSize ?? null,
           hours_worked:   session.hoursWorked ?? null,
+          lf:             session.lf || null,
+          // Lines are stored as raw image-space points with no embedded
+          // reference, same reasoning as count_data — bundle the image size
+          // they were captured against so another device can rescale them.
+          lf_data:        session.lfLines?.length > 0
+            ? { w: activePage.image.width, h: activePage.image.height, lines: session.lfLines }
+            : null,
           updated_at:     new Date().toISOString(),
         }
 
@@ -1843,6 +2176,15 @@ export default function Canvas() {
           ;({ data, error } = await supabase.from('sessions').insert(rest).select('id').single())
           if (!error && (session.crewSize != null || session.hoursWorked != null)) {
             alert('Session saved, but Crew Size / Hours Worked were NOT saved — the database is missing those columns. Run the migration noted at the top of Canvas.jsx (crew_size/hours_worked ALTER TABLE) in the Supabase SQL editor, then re-enter them via the session\'s edit (pencil) button.')
+          }
+        }
+        if (error && /\blf\b|lf_data/.test(error.message)) {
+          // Same idea, for the newer lf/lf_data columns specifically.
+          console.warn('[Canvas] lf/lf_data columns missing on insert, retrying without them.')
+          const { lf, lf_data, ...rest } = insertPayload
+          ;({ data, error } = await supabase.from('sessions').insert(rest).select('id').single())
+          if (!error && session.lf) {
+            alert('Session saved, but Linear Footage was NOT saved — the database is missing those columns. Run the migration noted at the top of Canvas.jsx (lf/lf_data ALTER TABLE) in the Supabase SQL editor, then redraw the line(s) via Paint More.')
           }
         }
         if (error) throw error
@@ -1913,13 +2255,12 @@ export default function Canvas() {
 
         const sfDiv = document.createElement('div'); sfDiv.className = 'ct-scard-sf'
         const _count = s.count ?? s.countMarkers?.length ?? 0
-        if (s.sf > 0 && _count > 0) {
-          sfDiv.textContent = `${Math.round(s.sf).toLocaleString()} SF · ${_count} items`
-        } else if (_count > 0) {
-          sfDiv.textContent = `${_count} items`
-        } else {
-          sfDiv.textContent = `${Math.round(s.sf).toLocaleString()} SF`
-        }
+        const _lf = s.lf || 0
+        const parts = []
+        if (s.sf > 0) parts.push(`${Math.round(s.sf).toLocaleString()} SF`)
+        if (_lf > 0) parts.push(`${Math.round(_lf).toLocaleString()} LF`)
+        if (_count > 0) parts.push(`${_count} items`)
+        sfDiv.textContent = parts.length ? parts.join(' · ') : '0 SF'
         card.append(top, sfDiv)
 
         const metaDiv = document.createElement('div'); metaDiv.className = 'ct-scard-meta'
@@ -1966,7 +2307,7 @@ export default function Canvas() {
         }
         if (draft.countMarkers?.length > 0) {
           liveCountMarkers = draft.countMarkers
-          drawCountLayer(); updateUnsaved(true)
+          drawMarkersLayer(); updateUnsaved(true)
         }
         if (draft.hlData || draft.penData || draft.countMarkers?.length > 0) {
           console.log('[Canvas] Draft restored from localStorage')
@@ -2047,6 +2388,7 @@ export default function Canvas() {
       editTarget = {pg, s}
       if (editNameRef.current) editNameRef.current.value = s.name
       if (editSFRef.current) editSFRef.current.value = Math.round(s.sf)
+      if (editLFRef.current) editLFRef.current.value = s.lf ? Math.round(s.lf) : ''
       if (editDateRef.current) editDateRef.current.value = s.date || ''
       if (editCountRef.current) editCountRef.current.textContent = (s.count ?? s.countMarkers?.length ?? 0) + ' items'
       if (editColorsRef.current) editColorsRef.current.querySelectorAll('.ct-modal-cc').forEach(el => el.classList.toggle('sel', el.dataset.c === s.color))
@@ -2060,6 +2402,7 @@ export default function Canvas() {
       const {s} = editTarget
       const newName = editNameRef.current?.value.trim()
       const newSF   = parseFloat(editSFRef.current?.value)
+      const newLF   = parseFloat(editLFRef.current?.value)
       const newDate = editDateRef.current?.value
       const sel     = editColorsRef.current?.querySelector('.ct-modal-cc.sel')
       const crewRaw  = editCrewRef.current?.value
@@ -2068,6 +2411,7 @@ export default function Canvas() {
       const newHours = hoursRaw ? parseFloat(hoursRaw) : null
       if (newName) s.name = newName
       if (!isNaN(newSF) && newSF >= 0) s.sf = newSF
+      s.lf = (!isNaN(newLF) && newLF >= 0) ? newLF : 0
       if (newDate) s.date = newDate
       if (sel) s.color = sel.dataset.c
       s.crewSize    = (newCrew != null && !isNaN(newCrew)) ? newCrew : null
@@ -2076,7 +2420,7 @@ export default function Canvas() {
       renderSessions(); updateSF(); redrawAll()
       if (s.supabaseId) {
         console.log('[Canvas] Updating session in Supabase:', s.supabaseId, s.name)
-        const payload = { name: s.name, color: s.color, sf: s.sf, work_date: s.date, crew_size: s.crewSize, hours_worked: s.hoursWorked }
+        const payload = { name: s.name, color: s.color, sf: s.sf, lf: s.lf || null, work_date: s.date, crew_size: s.crewSize, hours_worked: s.hoursWorked }
         let { error } = await supabase.from('sessions').update(payload).eq('id', s.supabaseId)
         let crewHoursDropped = false
         if (error && /crew_size|hours_worked/.test(error.message)) {
@@ -2091,6 +2435,16 @@ export default function Canvas() {
         }
         if (!error && crewHoursDropped) {
           alert('Session saved, but Crew Size / Hours Worked were NOT saved — the database is missing those columns. Run the migration noted at the top of Canvas.jsx (crew_size/hours_worked ALTER TABLE) in the Supabase SQL editor, then re-enter them.')
+        }
+        let lfDropped = false
+        if (error && /\blf\b/.test(error.message)) {
+          console.warn('[Canvas] lf column missing, retrying without it — run the migration noted at the top of this file.')
+          lfDropped = true
+          const { lf, ...rest } = payload
+          ;({ error } = await supabase.from('sessions').update(rest).eq('id', s.supabaseId))
+        }
+        if (!error && lfDropped) {
+          alert('Session saved, but Linear Footage was NOT saved — the database is missing that column. Run the migration noted at the top of Canvas.jsx (lf/lf_data ALTER TABLE) in the Supabase SQL editor, then re-enter it.')
         }
         if (error) {
           console.error('[Canvas] saveEdit update failed:', error)
@@ -2107,6 +2461,7 @@ export default function Canvas() {
       const {s} = editTarget
       activeRect = null; rectHandle = null
       activePoly = null; polyDragMode = null; polyVertexIdx = null
+      activeLFLine = null; lfDragMode = null; lfVertexIdx = null
       drawCtx.clearRect(0, 0, cW, cH)
       closeEditModal(); editingSession = true; ensureLive()
       // Hide session first so count markers don't double during load
@@ -2116,6 +2471,7 @@ export default function Canvas() {
       if (s.hlCanvas)  liveHlCtx.drawImage(s.hlCanvas, 0, 0)
       if (s.penCanvas) livePenCtx.drawImage(s.penCanvas, 0, 0)
       liveCountMarkers = s.countMarkers ? [...s.countMarkers] : []
+      liveLFLines = s.lfLines ? s.lfLines.map(l => ({...l, points: l.points.map(p => ({...p}))})) : []
       undoStack = [{
         hl:  liveHlCtx.getImageData(0, 0, liveHlCanvas.width, liveHlCanvas.height),
         pen: livePenCtx.getImageData(0, 0, livePenCanvas.width, livePenCanvas.height),
@@ -2161,12 +2517,13 @@ export default function Canvas() {
       if (!editTarget) return
       activeRect = null; rectHandle = null
       activePoly = null; polyDragMode = null; polyVertexIdx = null
+      activeLFLine = null; lfDragMode = null; lfVertexIdx = null
       drawCtx.clearRect(0, 0, cW, cH)
       editTarget.s._hidden = false; editingSession = false; editTarget = null
       ensureLive()
       liveHlCtx.clearRect(0, 0, liveHlCanvas.width, liveHlCanvas.height)
       livePenCtx.clearRect(0, 0, livePenCanvas.width, livePenCanvas.height)
-      liveCountMarkers = []; undoStack = []; invalidateSessions()
+      liveCountMarkers = []; liveLFLines = []; undoStack = []; invalidateSessions()
       if (editBannerRef.current) editBannerRef.current.classList.remove('show')
       restoreFooter(); redrawAll(); updateSF(); renderSessions()
     }
@@ -2175,6 +2532,7 @@ export default function Canvas() {
       if (!editTarget) return
       if (activeRect) bakeActiveRect()
       if (activePoly) bakePolygon()
+      if (activeLFLine) commitLFLine()
       const {s} = editTarget
       const newHL  = document.createElement('canvas')
       newHL.width  = liveHlCanvas.width;  newHL.height = liveHlCanvas.height
@@ -2186,6 +2544,8 @@ export default function Canvas() {
       if (newPenCtx && newPen.width > 0) newPenCtx.drawImage(livePenCanvas, 0, 0)
       s.hlCanvas = newHL; s.penCanvas = newPen
       s.countMarkers = [...liveCountMarkers]; s.count = liveCountMarkers.length
+      s.lfLines = liveLFLines.map(l => ({...l, points: l.points.map(p => ({...p}))}))
+      s.lf = liveLFLines.reduce((a, l) => a + toLF(lineLengthPx(l.points)), 0)
       s._hidden = false
       // Recalculate SF from updated highlight canvas
       const hlCtx2 = newHL.width > 0 && newHL.height > 0 ? newHL.getContext('2d') : null
@@ -2194,7 +2554,7 @@ export default function Canvas() {
       s.sf = activePage?.ppf ? px / (activePage.ppf * activePage.ppf) : s.sf
       liveHlCtx.clearRect(0, 0, liveHlCanvas.width, liveHlCanvas.height)
       livePenCtx.clearRect(0, 0, livePenCanvas.width, livePenCanvas.height)
-      liveCountMarkers = []; undoStack = []; editingSession = false; editTarget = null
+      liveCountMarkers = []; liveLFLines = []; undoStack = []; editingSession = false; editTarget = null
       invalidateSessions(); if (editBannerRef.current) editBannerRef.current.classList.remove('show')
       restoreFooter(); redrawAll(); renderSessions(); updateSF()
       // Persist updated session to Supabase (fire-and-forget, uploads canvases
@@ -2210,6 +2570,9 @@ export default function Canvas() {
           const count_data = s.countMarkers.length > 0
             ? { w: activePage.image.width, h: activePage.image.height, markers: s.countMarkers }
             : null
+          const lf_data = s.lfLines?.length > 0
+            ? { w: activePage.image.width, h: activePage.image.height, lines: s.lfLines }
+            : null
           console.log('[Canvas] commitSessionEdit saving count_data:', JSON.stringify(count_data))
           // update, not upsert — this always targets an existing row
           // (guarded by s.supabaseId above), and upsert() is implemented as
@@ -2220,15 +2583,26 @@ export default function Canvas() {
           // "new row violates row-level security policy" — a plain update()
           // only evaluates the UPDATE policy against the row already in the
           // table, which is what we actually want here.
-          const { error } = await supabase.from('sessions').update({
+          const updatePayload = {
             name:           s.name,
             color:          s.color,
             sf:             s.sf,
             highlight_data,
             pen_data,
             count_data,
+            lf:             s.lf || null,
+            lf_data,
             updated_at:     new Date().toISOString(),
-          }).eq('id', s.supabaseId)
+          }
+          let { error } = await supabase.from('sessions').update(updatePayload).eq('id', s.supabaseId)
+          if (error && /\blf\b|lf_data/.test(error.message)) {
+            console.warn('[Canvas] lf/lf_data columns missing on update, retrying without them.')
+            const { lf, lf_data: _lfData, ...rest } = updatePayload
+            ;({ error } = await supabase.from('sessions').update(rest).eq('id', s.supabaseId))
+            if (!error && s.lf) {
+              alert('Session saved, but Linear Footage was NOT saved — the database is missing those columns. Run the migration noted at the top of Canvas.jsx (lf/lf_data ALTER TABLE) in the Supabase SQL editor.')
+            }
+          }
           if (error) {
             console.error('[Canvas] Failed to update session:', error)
             // upsert failing here (e.g. the "update your own sessions only"
@@ -2256,7 +2630,7 @@ export default function Canvas() {
       footerRef.current.querySelector('#ct-clear-btn').addEventListener('click', () => {
         liveHlCtx.clearRect(0, 0, liveHlCanvas.width, liveHlCanvas.height)
         livePenCtx.clearRect(0, 0, livePenCanvas.width, livePenCanvas.height)
-        liveCountMarkers = []; undoStack = []
+        liveCountMarkers = []; liveLFLines = []; undoStack = []
         redrawAll(); updateSF(); updateUnsaved(false)
         try { localStorage.removeItem(`draft_${pageId}`) } catch {}
       })
@@ -2310,7 +2684,7 @@ export default function Canvas() {
       pages.forEach(pg => pg.sessions.forEach(s => {
         if (!s.date) return
         if (!byDate[s.date]) byDate[s.date] = []
-        byDate[s.date].push({name: s.name, color: s.color, sf: s.sf, pageName: pg.name, time: s.time, crewSize: s.crewSize || 0, hoursWorked: s.hoursWorked || 0})
+        byDate[s.date].push({name: s.name, color: s.color, sf: s.sf, lf: s.lf || 0, pageName: pg.name, time: s.time, crewSize: s.crewSize || 0, hoursWorked: s.hoursWorked || 0})
       }))
       const oldTargets = {}
       dayRecords.forEach(r => { if (r.target) oldTargets[r.date] = r.target })
@@ -2378,6 +2752,7 @@ export default function Canvas() {
         panel.appendChild(em); return
       }
       const totalSF = rec.sessions.reduce((a,s)=>a+s.sf,0)
+      const totalLF = rec.sessions.reduce((a,s)=>a+(s.lf||0),0)
       const byPage = {}
       rec.sessions.forEach(s => { if (!byPage[s.pageName]) byPage[s.pageName]=[]; byPage[s.pageName].push(s) })
       Object.entries(byPage).forEach(([pname, sessions]) => {
@@ -2386,13 +2761,17 @@ export default function Canvas() {
         lbl.textContent = pname; panel.appendChild(lbl)
         sessions.forEach(s => {
           const d = document.createElement('div'); d.className = 'ct-cal-sess-item'
-          d.innerHTML = `<div class="ct-cal-sess-dot" style="background:${s.color}"></div><div><div class="ct-cal-sess-name">${s.name}</div><div class="ct-cal-sess-meta">${s.time}</div></div><div class="ct-cal-sess-sf">${Math.round(s.sf).toLocaleString()} SF</div>`
+          const amount = s.sf > 0
+            ? `${Math.round(s.sf).toLocaleString()} SF`
+            : (s.lf ? `${Math.round(s.lf).toLocaleString()} LF` : '0 SF')
+          d.innerHTML = `<div class="ct-cal-sess-dot" style="background:${s.color}"></div><div><div class="ct-cal-sess-name">${s.name}</div><div class="ct-cal-sess-meta">${s.time}</div></div><div class="ct-cal-sess-sf">${amount}</div>`
           panel.appendChild(d)
         })
       })
       const tot = document.createElement('div')
       tot.style.cssText='margin-top:10px;padding-top:8px;border-top:1px solid var(--ct-border);display:flex;justify-content:space-between;'
-      tot.innerHTML = `<span style="font-size:10px;color:var(--ct-muted);font-weight:700;text-transform:uppercase;letter-spacing:1px">Total</span><span style="font-size:16px;font-weight:800;color:var(--ct-accent)">${Math.round(totalSF).toLocaleString()} SF</span>`
+      const totLabel = totalLF > 0 ? `${Math.round(totalSF).toLocaleString()} SF · ${Math.round(totalLF).toLocaleString()} LF` : `${Math.round(totalSF).toLocaleString()} SF`
+      tot.innerHTML = `<span style="font-size:10px;color:var(--ct-muted);font-weight:700;text-transform:uppercase;letter-spacing:1px">Total</span><span style="font-size:16px;font-weight:800;color:var(--ct-accent)">${totLabel}</span>`
       panel.appendChild(tot)
     }
     function renderCalChart() {
@@ -2439,21 +2818,22 @@ export default function Canvas() {
     function buildReportData() {
       const days = [...dayRecords].sort((a, b) => b.date.localeCompare(a.date))
       const maxSF = Math.max(...days.map(d => d.sessions.reduce((a, s) => a + s.sf, 0)), 1)
-      let totalSF = 0, totalCrew = 0, totalHours = 0
+      let totalSF = 0, totalLF = 0, totalCrew = 0, totalHours = 0
       const dayRows = days.map(d => {
         const sf = d.sessions.reduce((a, s) => a + s.sf, 0)
+        const lf = d.sessions.reduce((a, s) => a + (s.lf || 0), 0)
         const crew = d.sessions.reduce((a, s) => a + (s.crewSize || 0), 0)
         const hours = d.sessions.reduce((a, s) => a + (s.hoursWorked || 0), 0)
-        totalSF += sf; totalCrew += crew; totalHours += hours
+        totalSF += sf; totalLF += lf; totalCrew += crew; totalHours += hours
         return {
-          date: d.date, dayColor: d.dayColor, sf, crew, hours,
+          date: d.date, dayColor: d.dayColor, sf, lf, crew, hours,
           pct: d.target > 0 ? Math.round((sf / d.target) * 100) : null,
           barPct: sf > 0 ? Math.max((sf / maxSF) * 100, 2) : 0,
           sessionNames: d.sessions.map(s => s.name).join(', '),
         }
       })
       return {
-        dayRows, totalSF, totalCrew, totalHours,
+        dayRows, totalSF, totalLF, totalCrew, totalHours,
         label: projectName || activePage?.name || 'Floor Plan',
         generated: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
         range: days.length ? `${formatDate(days[days.length - 1].date)} – ${formatDate(days[0].date)}` : '',
@@ -2467,6 +2847,7 @@ export default function Canvas() {
           <td class="${sessClass}">${d.sessionNames || '–'}</td>
           <td class="${barClass}"><div class="${trackClass}"><div class="${fillClass}" style="width:${d.barPct}%;background:${d.dayColor || '#4ade80'}"></div></div></td>
           <td class="${numClass}">${Math.round(d.sf).toLocaleString()}</td>
+          <td class="${numClass}">${d.lf ? Math.round(d.lf).toLocaleString() : '–'}</td>
           <td class="${numClass}">${d.crew || '–'}</td>
           <td class="${numClass}">${d.hours ? d.hours.toFixed(1) : '–'}</td>
           <td class="${numClass}">${d.pct !== null ? d.pct + '%' : '–'}</td>
@@ -2488,6 +2869,7 @@ export default function Canvas() {
               <th>Session(s)</th>
               <th>SF / Day</th>
               <th class="ct-rep-num">SF</th>
+              <th class="ct-rep-num">LF</th>
               <th class="ct-rep-num">Crew</th>
               <th class="ct-rep-num">Hours</th>
               <th class="ct-rep-num">% of Target</th>
@@ -2500,6 +2882,7 @@ export default function Canvas() {
               <td></td>
               <td></td>
               <td class="ct-rep-num">${Math.round(data.totalSF).toLocaleString()}</td>
+              <td class="ct-rep-num">${data.totalLF ? Math.round(data.totalLF).toLocaleString() : '–'}</td>
               <td class="ct-rep-num">${data.totalCrew || '–'}</td>
               <td class="ct-rep-num">${data.totalHours ? data.totalHours.toFixed(1) : '–'}</td>
               <td class="ct-rep-num"></td>
@@ -2559,6 +2942,7 @@ export default function Canvas() {
         <th>Session(s)</th>
         <th>SF / Day</th>
         <th class="num">SF</th>
+        <th class="num">LF</th>
         <th class="num">Crew</th>
         <th class="num">Hours</th>
         <th class="num">% of Target</th>
@@ -2571,6 +2955,7 @@ export default function Canvas() {
         <td></td>
         <td></td>
         <td class="num">${Math.round(data.totalSF).toLocaleString()}</td>
+        <td class="num">${data.totalLF ? Math.round(data.totalLF).toLocaleString() : '–'}</td>
         <td class="num">${data.totalCrew || '–'}</td>
         <td class="num">${data.totalHours ? data.totalHours.toFixed(1) : '–'}</td>
         <td class="num"></td>
@@ -2782,6 +3167,18 @@ export default function Canvas() {
           }
         } catch {}
 
+        let lfLines = []
+        try {
+          const raw = dbSess.lf_data
+          const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+          if (parsed?.lines) {
+            // Same cross-device rescaling as count markers above.
+            const sx = parsed.w ? img.width / parsed.w : 1
+            const sy = parsed.h ? img.height / parsed.h : 1
+            lfLines = parsed.lines.map(l => ({...l, points: l.points.map(pt => ({...pt, x: pt.x * sx, y: pt.y * sy}))}))
+          }
+        } catch {}
+
         const date = dbSess.work_date || getCurrentDate()
 
         activePage.sessions.push({
@@ -2792,7 +3189,8 @@ export default function Canvas() {
           userColor:    dbSess.profiles?.avatar_color || dbSess.color || '#facc15',
           sf:           parseFloat(dbSess.sf) || 0,
           count:        countMarkers.length || 0,
-          hlCanvas, penCanvas, countMarkers,
+          lf:           parseFloat(dbSess.lf) || 0,
+          hlCanvas, penCanvas, countMarkers, lfLines,
           pageId:       activePage.id,
           pageName:     activePage.name,
           date,
@@ -3148,6 +3546,10 @@ export default function Canvas() {
         activePoly = null; polyDragMode = null; polyVertexIdx = null
         drawActivePolyPreview(); updateSFDisplay(); updateUnsaved(checkHasLiveContent())
       }
+      if (tool === 'lf' && activeLFLine) {
+        activeLFLine = null; lfDragMode = null; lfVertexIdx = null
+        drawActiveLFPreview(); updateUnsaved(checkHasLiveContent())
+      }
     })
     window.addEventListener('resize', onResize)
     document.addEventListener('click', e => {
@@ -3309,6 +3711,7 @@ export default function Canvas() {
               <div ref={btnHlRef}    className="ct-tbtn"        onClick={() => api.current.setTool?.('highlight')}>Highlight</div>
               <div ref={btnRectRef}  className="ct-tbtn t-rect" onClick={() => api.current.setTool?.('rect')}>Rectangle</div>
               <div ref={btnPolyRef}  className="ct-tbtn"        onClick={() => api.current.setTool?.('poly')}>Polygon</div>
+              <div ref={btnLFRef}    className="ct-tbtn"        onClick={() => api.current.setTool?.('lf')}>Linear Ft</div>
             </div>
             <div className="ct-tool-row">
               <div ref={btnErRef}    className="ct-tbtn" onClick={() => api.current.setTool?.('erase')}>Erase</div>
@@ -3375,6 +3778,10 @@ export default function Canvas() {
           <div className="ct-modal-field">
             <label className="ct-modal-lbl">Square Footage</label>
             <input ref={editSFRef} className="ct-modal-input" type="number" min="0" step="1" placeholder="SF" />
+          </div>
+          <div className="ct-modal-field">
+            <label className="ct-modal-lbl">Linear Footage (optional)</label>
+            <input ref={editLFRef} className="ct-modal-input" type="number" min="0" step="1" placeholder="LF" />
           </div>
           <div className="ct-modal-field">
             <label className="ct-modal-lbl">Date Performed</label>

@@ -146,6 +146,7 @@
 .ct-tbtn.t-count { background: var(--ct-accent); border-color: var(--ct-accent); color: #000; }
 .ct-tbtn.t-rect { background: #a78bfa; border-color: #a78bfa; color: #000; }
 .ct-tbtn.t-poly { background: #06b6d4; border-color: #06b6d4; color: #000; }
+.ct-tbtn.t-lf { background: #f97316; border-color: #f97316; color: #000; }
 .ct-brush-row { display: flex; align-items: center; gap: 7px; }
 .ct-blbl { font-size: 11px; color: var(--ct-muted); min-width: 30px; }
 .ct-brush-range { flex: 1; accent-color: var(--ct-accent); cursor: pointer; }

@@ -198,6 +198,13 @@ ALTER PUBLICATION supabase_realtime ADD TABLE sessions;
 --   ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS hours_worked numeric;
 -- Both optional/nullable, no default — asked for in the Save Session dialog
 -- in Canvas.jsx, and editable afterward via the session edit modal.
+--
+-- Add lf/lf_data the same way, for the Linear Footage tool:
+--   ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS lf numeric;
+--   ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS lf_data jsonb;
+-- lf is the session's total linear footage (denormalized, like sf/count);
+-- lf_data holds {w, h, lines: [{points, color}, ...]} — same cross-device
+-- rescaling shape as count_data.
 
 -- ============================================
 -- STORAGE — floor-plans bucket
