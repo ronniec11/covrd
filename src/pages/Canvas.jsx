@@ -111,6 +111,8 @@ export default function Canvas() {
   const calDayPanelRef   = useRef(null)
   const calBarsRef       = useRef(null)
   const calLegendRef     = useRef(null)
+  const reportModalRef   = useRef(null)
+  const reportBodyRef    = useRef(null)
 
   const api = useRef({})
 
@@ -278,6 +280,8 @@ export default function Canvas() {
     let todayTarget       = 0
     let totalBuildingSF   = 0   // project's total_sf_target, for the header % bar
     let projectCost       = 0   // project's cost — fetched but not shown on this page for now (see ProjectDetail.jsx/Projects.jsx)
+    let projectName        = ''
+    let projectDescription = ''  // e.g. "Final Clean" — shown on the printable Daily Report
     let calYear         = 0
     let calMonth        = 0
     let calSelectedDate = null
@@ -2449,12 +2453,16 @@ export default function Canvas() {
       return new Date(ds+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
     }
 
-    // Opens a standalone, print-ready report (own tab, own light-only
-    // styling — always readable on paper regardless of the app's own
-    // theme) covering every day in dayRecords: an SF-per-day bar, the
-    // labor totals (crew/hours, summed across that day's sessions), and
-    // percent of that day's target.
-    function printDailyReport() {
+    // Renders the report INTO an in-app overlay (with its own Close button)
+    // rather than window.open()-ing a separate tab/window — on an
+    // installed-to-homescreen iPad PWA, window.open() either fails or just
+    // navigates the single PWA window away from the app with no visible
+    // browser chrome to get back with, leaving the user stranded on the
+    // report with no way back. Printing still works: window.print() prints
+    // whatever's currently on screen, and the @media print rules below
+    // (see Canvas.css) hide everything except this overlay and force it to
+    // light/black-on-white regardless of the app's own dark/light theme.
+    function openDailyReport() {
       if (!dayRecords.length) { alert('No history to report yet — save a session first.'); return }
       const days = [...dayRecords].sort((a, b) => b.date.localeCompare(a.date))
       const maxSF = Math.max(...days.map(d => d.sessions.reduce((a, s) => a + s.sf, 0)), 1)
@@ -2470,74 +2478,51 @@ export default function Canvas() {
         return `
           <tr>
             <td>${formatDate(d.date)}</td>
-            <td class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${barPct}%;background:${d.dayColor || '#4ade80'}"></div></div></td>
-            <td class="num">${Math.round(sf).toLocaleString()}</td>
-            <td class="num">${crew || '–'}</td>
-            <td class="num">${hours ? hours.toFixed(1) : '–'}</td>
-            <td class="num">${pct !== null ? pct + '%' : '–'}</td>
+            <td class="ct-rep-bar-cell"><div class="ct-rep-bar-track"><div class="ct-rep-bar-fill" style="width:${barPct}%;background:${d.dayColor || '#4ade80'}"></div></div></td>
+            <td class="ct-rep-num">${Math.round(sf).toLocaleString()}</td>
+            <td class="ct-rep-num">${crew || '–'}</td>
+            <td class="ct-rep-num">${hours ? hours.toFixed(1) : '–'}</td>
+            <td class="ct-rep-num">${pct !== null ? pct + '%' : '–'}</td>
           </tr>`
       }).join('')
 
-      const pageName = activePage?.name || 'Floor Plan'
+      const label = projectName || activePage?.name || 'Floor Plan'
       const generated = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
       const range = days.length ? `${formatDate(days[days.length - 1].date)} – ${formatDate(days[0].date)}` : ''
 
-      const html = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>Daily Production Report - ${pageName}</title>
-<style>
-  * { box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif; color: #1c1c1a; background: #fff; margin: 0; padding: 32px; }
-  h1 { font-size: 20px; margin: 0 0 2px; }
-  .sub { font-size: 12px; color: #6b7280; margin-bottom: 20px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; text-align: left; }
-  th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; font-weight: 700; }
-  td.num, th.num { text-align: right; }
-  .bar-cell { width: 220px; }
-  .bar-track { background: #f1f1ef; border-radius: 3px; height: 10px; overflow: hidden; }
-  .bar-fill { height: 100%; border-radius: 3px; }
-  tfoot td { font-weight: 800; border-top: 2px solid #1c1c1a; border-bottom: none; }
-  .print-btn { position: fixed; top: 16px; right: 16px; background: #16a34a; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; }
-  @media print { .print-btn { display: none; } body { padding: 0; } }
-</style>
-</head>
-<body>
-  <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
-  <h1>${pageName} — Daily Production Report</h1>
-  <div class="sub">${range} &nbsp;•&nbsp; Generated ${generated}</div>
-  <table>
-    <thead>
-      <tr>
-        <th>Date</th>
-        <th>SF / Day</th>
-        <th class="num">SF</th>
-        <th class="num">Crew</th>
-        <th class="num">Hours</th>
-        <th class="num">% of Target</th>
-      </tr>
-    </thead>
-    <tbody>${rows}</tbody>
-    <tfoot>
-      <tr>
-        <td>Total</td>
-        <td></td>
-        <td class="num">${Math.round(totalSF).toLocaleString()}</td>
-        <td class="num">${totalCrew || '–'}</td>
-        <td class="num">${totalHours ? totalHours.toFixed(1) : '–'}</td>
-        <td class="num"></td>
-      </tr>
-    </tfoot>
-  </table>
-</body>
-</html>`
+      const html = `
+        <div class="ct-rep-title">${label}</div>
+        ${projectDescription ? `<div class="ct-rep-desc">${projectDescription}</div>` : ''}
+        <div class="ct-rep-sub">${range} &nbsp;•&nbsp; Generated ${generated}</div>
+        <table class="ct-rep-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>SF / Day</th>
+              <th class="ct-rep-num">SF</th>
+              <th class="ct-rep-num">Crew</th>
+              <th class="ct-rep-num">Hours</th>
+              <th class="ct-rep-num">% of Target</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+          <tfoot>
+            <tr>
+              <td>Total</td>
+              <td></td>
+              <td class="ct-rep-num">${Math.round(totalSF).toLocaleString()}</td>
+              <td class="ct-rep-num">${totalCrew || '–'}</td>
+              <td class="ct-rep-num">${totalHours ? totalHours.toFixed(1) : '–'}</td>
+              <td class="ct-rep-num"></td>
+            </tr>
+          </tfoot>
+        </table>`
 
-      const w = window.open('', '_blank')
-      if (!w) { alert('Please allow pop-ups to view the report.'); return }
-      w.document.write(html)
-      w.document.close()
+      if (reportBodyRef.current) reportBodyRef.current.innerHTML = html
+      if (reportModalRef.current) reportModalRef.current.classList.add('open')
+    }
+    function closeDailyReport() {
+      if (reportModalRef.current) reportModalRef.current.classList.remove('open')
     }
 
     // ── RESIZE ────────────────────────────────────────────────────────────────
@@ -2837,7 +2822,7 @@ export default function Canvas() {
       // Load project target and apply it before the progress bar renders
       const { data: project } = await supabase
         .from('projects')
-        .select('daily_sf_target, total_sf_target, cost')
+        .select('name, description, daily_sf_target, total_sf_target, cost')
         .eq('id', pg.project_id)
         .single()
       if (project?.daily_sf_target) {
@@ -2850,6 +2835,8 @@ export default function Canvas() {
       if (project?.cost) {
         projectCost = project.cost
       }
+      projectName = project?.name || ''
+      projectDescription = project?.description || ''
 
       const savedPPF = pg.pixels_per_foot || null
       const savedCalibrated = pg.calibrated || false
@@ -3108,7 +3095,7 @@ export default function Canvas() {
     api.current = {
       setTool, startCalib, cancelCalib,
       doZoom, resetView,
-      openHistory, closeHistory, calPrevMonth, calNextMonth, printDailyReport,
+      openHistory, closeHistory, calPrevMonth, calNextMonth, openDailyReport, closeDailyReport,
       closeEditModal, saveEdit, startPaintEdit, startCountEdit,
       cancelSessionEdit, commitSessionEdit,
       closeSaveModal, confirmSaveSession,
@@ -3420,9 +3407,22 @@ export default function Canvas() {
             </div>
           </div>
           <div className="ct-cal-footer">
-            <button className="ct-cal-btn" onClick={() => api.current.printDailyReport?.()}>Report</button>
+            <button className="ct-cal-btn" onClick={() => api.current.openDailyReport?.()}>Report</button>
             <button className="ct-cal-btn" onClick={() => api.current.closeHistory?.()}>Done</button>
           </div>
+        </div>
+      </div>
+
+      <div ref={reportModalRef} className="ct-report-overlay">
+        <div className="ct-report-box">
+          <div className="ct-report-header">
+            <div className="ct-report-hdr-title">Daily Production Report</div>
+            <div className="ct-report-hdr-btns">
+              <button className="ct-cal-btn" onClick={() => window.print()}>Print / Save as PDF</button>
+              <button className="ct-cal-btn" onClick={() => api.current.closeDailyReport?.()}>Close</button>
+            </div>
+          </div>
+          <div ref={reportBodyRef} className="ct-report-body" />
         </div>
       </div>
 

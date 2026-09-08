@@ -345,3 +345,57 @@
 .ct-cal-footer { padding: 10px 16px; border-top: 1px solid var(--ct-border); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
 .ct-cal-btn { font-size: 12px; font-weight: 600; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--ct-border); background: var(--ct-surface-2); color: var(--ct-text); cursor: pointer; }
 .ct-cal-btn:hover { border-color: var(--ct-accent); color: var(--ct-accent); }
+
+/* ── DAILY REPORT ── */
+/* An in-app overlay (not a window.open() popup) — on an installed-to-
+   homescreen iPad PWA, a popup either fails outright or replaces the
+   single PWA window with no visible browser chrome to navigate back with.
+   This has its own always-present Close button instead. */
+.ct-report-overlay {
+  display: none; position: fixed; inset: 0; z-index: 700;
+  background: rgba(0,0,0,0.72); align-items: center; justify-content: center;
+}
+.ct-report-overlay.open { display: flex; }
+.ct-report-box {
+  background: var(--ct-surface); border: 1px solid var(--ct-border);
+  border-radius: 14px; width: 760px; max-width: 96vw; max-height: 90vh;
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+}
+.ct-report-header { padding: 14px 18px; border-bottom: 1px solid var(--ct-border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; gap: 10px; }
+.ct-report-hdr-title { font-size: 15px; font-weight: 700; color: var(--ct-text); }
+.ct-report-hdr-btns { display: flex; gap: 8px; flex-shrink: 0; }
+.ct-report-body { padding: 18px; overflow-y: auto; }
+.ct-rep-title { font-size: 18px; font-weight: 800; color: var(--ct-text); }
+.ct-rep-desc { font-size: 13px; font-weight: 600; color: var(--ct-accent); margin-top: 2px; }
+.ct-rep-sub { font-size: 11px; color: var(--ct-muted); margin: 4px 0 16px; }
+.ct-rep-table { width: 100%; border-collapse: collapse; font-size: 13px; color: var(--ct-text); }
+.ct-rep-table th, .ct-rep-table td { padding: 8px 10px; border-bottom: 1px solid var(--ct-border); text-align: left; }
+.ct-rep-table th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--ct-muted); font-weight: 700; }
+.ct-rep-num { text-align: right; }
+.ct-rep-bar-cell { width: 200px; }
+.ct-rep-bar-track { background: var(--ct-surface-2); border-radius: 3px; height: 10px; overflow: hidden; }
+.ct-rep-bar-fill { height: 100%; border-radius: 3px; }
+.ct-rep-table tfoot td { font-weight: 800; border-top: 2px solid var(--ct-border); border-bottom: none; }
+
+/* Printing: show ONLY the report, always light/black-on-white regardless
+   of the app's current theme (dark mode wastes ink and looks wrong on
+   paper) — the standard "print just this element" trick: hide everything,
+   then re-show just the report box positioned to fill the page. */
+@media print {
+  body * { visibility: hidden; }
+  .ct-report-box, .ct-report-box * { visibility: visible; }
+  .ct-report-overlay { position: absolute; inset: auto; top: 0; left: 0; background: none; display: block; }
+  .ct-report-box {
+    position: absolute; top: 0; left: 0; width: 100%; max-width: none; max-height: none;
+    box-shadow: none; border: none; border-radius: 0;
+    background: #fff; color: #1c1c1a;
+  }
+  .ct-report-header { display: none; }
+  .ct-rep-title, .ct-rep-sub, .ct-rep-table th, .ct-rep-table td { color: #1c1c1a !important; }
+  .ct-rep-sub, .ct-rep-table th { color: #6b7280 !important; }
+  .ct-rep-desc { color: #16a34a !important; }
+  .ct-rep-table th, .ct-rep-table td { border-color: #e5e7eb !important; }
+  .ct-rep-table tfoot td { border-top-color: #1c1c1a !important; }
+  .ct-rep-bar-track { background: #f1f1ef !important; }
+}
