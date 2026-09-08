@@ -140,13 +140,25 @@
   cursor: pointer; transition: all 0.12s; text-align: center; user-select: none;
 }
 .ct-tbtn:hover { border-color: var(--ct-text); color: var(--ct-text); }
-.ct-tbtn.t-hl { background: #facc15; border-color: #facc15; color: #000; }
-.ct-tbtn.t-pen { background: #60a5fa; border-color: #60a5fa; color: #000; }
-.ct-tbtn.t-er { background: #f87171; border-color: #f87171; color: #000; }
-.ct-tbtn.t-count { background: var(--ct-accent); border-color: var(--ct-accent); color: #000; }
-.ct-tbtn.t-rect { background: #a78bfa; border-color: #a78bfa; color: #000; }
-.ct-tbtn.t-poly { background: #06b6d4; border-color: #06b6d4; color: #000; }
-.ct-tbtn.t-lf { background: #f97316; border-color: #f97316; color: #000; }
+/* Trying a single "active" look across every tool instead of a distinct
+   color per tool: bright outline + toned-down tinted fill + matching text,
+   same idea as the Building 1/2 page-select cards in ProjectDetail.jsx.
+   Erase keeps its own red so it still reads as the "destructive" one. */
+.ct-tbtn.t-hl,
+.ct-tbtn.t-pen,
+.ct-tbtn.t-count,
+.ct-tbtn.t-rect,
+.ct-tbtn.t-poly,
+.ct-tbtn.t-lf {
+  background: rgba(96, 165, 250, 0.15);
+  border: 2px solid #60a5fa;
+  color: #60a5fa;
+}
+.ct-tbtn.t-er {
+  background: rgba(248, 113, 113, 0.15);
+  border: 2px solid #f87171;
+  color: #f87171;
+}
 .ct-tbtn-wide { padding: 9px 4px; font-size: 12px; }
 .ct-brush-row { display: flex; align-items: center; gap: 7px; }
 .ct-blbl { font-size: 11px; color: var(--ct-muted); min-width: 30px; }
