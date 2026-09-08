@@ -77,7 +77,6 @@ export default function Canvas() {
   const progressFillRef  = useRef(null)
   const totalSFsbRef     = useRef(null)
   const targetDisplayRef = useRef(null)
-  const targetInputRef   = useRef(null)
   const sessionListRef   = useRef(null)
   const emptyMsgRef      = useRef(null)
   const footerRef        = useRef(null)
@@ -2266,19 +2265,10 @@ export default function Canvas() {
     }
 
     // ── TARGET & PROGRESS ─────────────────────────────────────────────────────
-    function updateTarget() {
-      todayTarget = parseFloat(targetInputRef.current?.value) || 0
-      const rec = dayRecords.find(r => r.date === getCurrentDate())
-      if (rec) rec.target = todayTarget
-      updateProgressBar()
-      // Debounce save to Supabase so rapid typing doesn't flood the DB
-      clearTimeout(updateTarget._saveTimer)
-      updateTarget._saveTimer = setTimeout(async () => {
-        if (dbProjectId) {
-          await supabase.from('projects').update({ daily_sf_target: todayTarget }).eq('id', dbProjectId)
-        }
-      }, 800)
-    }
+    // The daily SF goal is view-only here now — editable only from the
+    // Projects page, so it can't be bumped by accident while marking up
+    // plans or browsing history. todayTarget is still read from the
+    // project's daily_sf_target (see init()) and drives this display.
     function updateProgressBar() {
       const target = todayTarget
       const total  = cachedTodaySF + activeRectSF() + activePolySF()  // all sessions + current unsaved work
@@ -2286,7 +2276,6 @@ export default function Canvas() {
       if (progressFillRef.current)  { progressFillRef.current.style.width = pct + '%'; progressFillRef.current.classList.toggle('over', total > target && target > 0) }
       if (totalSFsbRef.current)     totalSFsbRef.current.textContent     = Math.round(total).toLocaleString()
       if (targetDisplayRef.current) targetDisplayRef.current.textContent = Math.round(target).toLocaleString()
-      if (targetInputRef.current)   targetInputRef.current.value         = target || ''
     }
 
     // ── HISTORY ───────────────────────────────────────────────────────────────
@@ -2377,34 +2366,18 @@ export default function Canvas() {
       })
       return cell
     }
+    // SF Target and its progress bar are deliberately not shown/editable
+    // here — the goal is only editable on the Projects page now, so it
+    // can't get changed by accident while browsing history.
     function renderCalDayPanel(dateStr, rec) {
       const panel = calDayPanelRef.current; panel.innerHTML = ''
       const hdr = document.createElement('div'); hdr.className = 'ct-cal-day-date-hdr'
       hdr.textContent = formatDate(dateStr); panel.appendChild(hdr)
-      const trow = document.createElement('div'); trow.className = 'ct-cal-target-row'
-      const tlbl = document.createElement('span'); tlbl.className = 'ct-cal-target-lbl'; tlbl.textContent = 'SF Target:'
-      const tinp = document.createElement('input'); tinp.className = 'ct-cal-target-inp'; tinp.type = 'number'
-      tinp.value = rec?.target || ''; tinp.placeholder = 'Set goal'
-      tinp.addEventListener('change', () => {
-        const val = parseFloat(tinp.value) || 0
-        if (rec) rec.target = val
-        else { const nr = {date:dateStr,target:val,sessions:[],dayColor:getDayColor(dateStr)}; dayRecords.push(nr); dayRecords.sort((a,b)=>b.date.localeCompare(a.date)) }
-        if (dateStr === getCurrentDate()) { todayTarget = val; updateProgressBar() }
-        renderCalChart(); renderCalLegend()
-      })
-      const tunit = document.createElement('span'); tunit.className = 'ct-cal-target-lbl'; tunit.textContent = 'SF'
-      trow.append(tlbl, tinp, tunit); panel.appendChild(trow)
       if (!rec?.sessions.length) {
         const em = document.createElement('div'); em.className = 'ct-cal-day-empty'; em.textContent = 'No sessions recorded this day.'
         panel.appendChild(em); return
       }
       const totalSF = rec.sessions.reduce((a,s)=>a+s.sf,0)
-      if (rec.target > 0) {
-        const pct = Math.min((totalSF/rec.target)*100,100)
-        const pbg = document.createElement('div'); pbg.className = 'ct-cal-day-progress'
-        pbg.innerHTML = `<div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:10px;color:var(--ct-muted)"><span>Progress</span><span style="color:var(--ct-text);font-weight:700">${Math.round(totalSF).toLocaleString()} / ${Math.round(rec.target).toLocaleString()} SF</span></div><div class="ct-progress-bar-bg"><div class="ct-progress-bar-fill${totalSF>=rec.target?' over':''}" style="width:${pct}%"></div></div>`
-        panel.appendChild(pbg)
-      }
       const byPage = {}
       rec.sessions.forEach(s => { if (!byPage[s.pageName]) byPage[s.pageName]=[]; byPage[s.pageName].push(s) })
       Object.entries(byPage).forEach(([pname, sessions]) => {
@@ -2921,7 +2894,6 @@ export default function Canvas() {
         .single()
       if (project?.daily_sf_target) {
         todayTarget = project.daily_sf_target
-        if (targetInputRef.current) targetInputRef.current.value = project.daily_sf_target
       }
       if (project?.total_sf_target) {
         totalBuildingSF = project.total_sf_target
@@ -3148,7 +3120,6 @@ export default function Canvas() {
     cNumerRef.current.addEventListener('input', applyCustomScale)
     cDenomRef.current.addEventListener('input', applyCustomScale)
     brushRangeRef.current.addEventListener('input', updateBrush)
-    targetInputRef.current.addEventListener('input', updateTarget)
     ctxBrushRef.current.addEventListener('input', e => ctxBrushChange(e.target.value))
 
     drawEl.addEventListener('mousedown', onDown)
@@ -3361,11 +3332,6 @@ export default function Canvas() {
             </div>
             <div className="ct-progress-bar-bg">
               <div ref={progressFillRef} className="ct-progress-bar-fill" style={{width:'0%'}} />
-            </div>
-            <div className="ct-target-row">
-              <span className="ct-target-lbl">Goal:</span>
-              <input ref={targetInputRef} type="number" className="ct-target-input" defaultValue="0" min="0" step="100" placeholder="SF goal" />
-              <span className="ct-target-unit">SF / day</span>
             </div>
           </div>
 
