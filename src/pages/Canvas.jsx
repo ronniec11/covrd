@@ -2476,6 +2476,7 @@ export default function Canvas() {
           date: d.date, dayColor: d.dayColor, sf, crew, hours,
           pct: d.target > 0 ? Math.round((sf / d.target) * 100) : null,
           barPct: sf > 0 ? Math.max((sf / maxSF) * 100, 2) : 0,
+          sessionNames: d.sessions.map(s => s.name).join(', '),
         }
       })
       return {
@@ -2486,10 +2487,11 @@ export default function Canvas() {
       }
     }
 
-    function reportRowsHtml(data, barClass, trackClass, fillClass, numClass) {
+    function reportRowsHtml(data, barClass, trackClass, fillClass, numClass, sessClass) {
       return data.dayRows.map(d => `
         <tr>
           <td>${formatDate(d.date)}</td>
+          <td class="${sessClass}">${d.sessionNames || '–'}</td>
           <td class="${barClass}"><div class="${trackClass}"><div class="${fillClass}" style="width:${d.barPct}%;background:${d.dayColor || '#4ade80'}"></div></div></td>
           <td class="${numClass}">${Math.round(d.sf).toLocaleString()}</td>
           <td class="${numClass}">${d.crew || '–'}</td>
@@ -2501,7 +2503,7 @@ export default function Canvas() {
     function openDailyReport() {
       if (!dayRecords.length) { alert('No history to report yet — save a session first.'); return }
       const data = buildReportData()
-      const rows = reportRowsHtml(data, 'ct-rep-bar-cell', 'ct-rep-bar-track', 'ct-rep-bar-fill', 'ct-rep-num')
+      const rows = reportRowsHtml(data, 'ct-rep-bar-cell', 'ct-rep-bar-track', 'ct-rep-bar-fill', 'ct-rep-num', 'ct-rep-sess')
       const html = `
         <div class="ct-rep-title">${data.label}</div>
         ${projectDescription ? `<div class="ct-rep-desc">${projectDescription}</div>` : ''}
@@ -2510,6 +2512,7 @@ export default function Canvas() {
           <thead>
             <tr>
               <th>Date</th>
+              <th>Session(s)</th>
               <th>SF / Day</th>
               <th class="ct-rep-num">SF</th>
               <th class="ct-rep-num">Crew</th>
@@ -2521,6 +2524,7 @@ export default function Canvas() {
           <tfoot>
             <tr>
               <td>Total</td>
+              <td></td>
               <td></td>
               <td class="ct-rep-num">${Math.round(data.totalSF).toLocaleString()}</td>
               <td class="ct-rep-num">${data.totalCrew || '–'}</td>
@@ -2548,7 +2552,7 @@ export default function Canvas() {
     function printDailyReportPDF() {
       if (!dayRecords.length) { alert('No history to report yet — save a session first.'); return }
       const data = buildReportData()
-      const rows = reportRowsHtml(data, 'bar-cell', 'bar-track', 'bar-fill', 'num')
+      const rows = reportRowsHtml(data, 'bar-cell', 'bar-track', 'bar-fill', 'num', 'sess')
       const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -2564,7 +2568,8 @@ export default function Canvas() {
   th, td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; text-align: left; }
   th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; font-weight: 700; }
   td.num, th.num { text-align: right; }
-  .bar-cell { width: 200px; }
+  .sess { max-width: 160px; }
+  .bar-cell { width: 160px; }
   .bar-track { background: #f1f1ef; border-radius: 3px; height: 10px; overflow: hidden; }
   .bar-fill { height: 100%; border-radius: 3px; }
   tfoot td { font-weight: 800; border-top: 2px solid #1c1c1a; border-bottom: none; }
@@ -2578,6 +2583,7 @@ export default function Canvas() {
     <thead>
       <tr>
         <th>Date</th>
+        <th>Session(s)</th>
         <th>SF / Day</th>
         <th class="num">SF</th>
         <th class="num">Crew</th>
@@ -2589,6 +2595,7 @@ export default function Canvas() {
     <tfoot>
       <tr>
         <td>Total</td>
+        <td></td>
         <td></td>
         <td class="num">${Math.round(data.totalSF).toLocaleString()}</td>
         <td class="num">${data.totalCrew || '–'}</td>
@@ -3468,7 +3475,7 @@ export default function Canvas() {
               <div ref={calMonthLblRef} className="ct-cal-month-lbl" />
               <button className="ct-cal-nav-btn" onClick={() => api.current.calNextMonth?.()}>›</button>
             </div>
-            <button className="ct-cal-close" onClick={() => api.current.closeHistory?.()}>Close</button>
+            <button className="ct-cal-btn" onClick={() => api.current.closeHistory?.()}>Close</button>
           </div>
           <div className="ct-cal-body">
             <div className="ct-cal-left">
