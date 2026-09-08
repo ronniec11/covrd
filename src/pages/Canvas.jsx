@@ -3743,12 +3743,14 @@ export default function Canvas() {
               <div ref={btnHlRef}    className="ct-tbtn"        onClick={() => api.current.setTool?.('highlight')}>Highlight</div>
               <div ref={btnRectRef}  className="ct-tbtn t-rect" onClick={() => api.current.setTool?.('rect')}>Rectangle</div>
               <div ref={btnPolyRef}  className="ct-tbtn"        onClick={() => api.current.setTool?.('poly')}>Polygon</div>
-              <div ref={btnLFRef}    className="ct-tbtn"        onClick={() => api.current.setTool?.('lf')}>Linear Ft</div>
             </div>
             <div className="ct-tool-row">
-              <div ref={btnErRef}    className="ct-tbtn" onClick={() => api.current.setTool?.('erase')}>Erase</div>
               <div ref={btnCountRef} className="ct-tbtn" onClick={() => api.current.setTool?.('count')}>Count</div>
               <div ref={btnPenRef}   className="ct-tbtn" onClick={() => api.current.setTool?.('pen')}>Pen</div>
+              <div ref={btnLFRef}    className="ct-tbtn" onClick={() => api.current.setTool?.('lf')}>Linear Ft</div>
+            </div>
+            <div className="ct-tool-row">
+              <div ref={btnErRef}    className="ct-tbtn ct-tbtn-wide" onClick={() => api.current.setTool?.('erase')}>Erase</div>
             </div>
             <div className="ct-sb-ttl">Brush Size</div>
             <div className="ct-brush-row">
