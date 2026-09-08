@@ -39,10 +39,7 @@ export default function Login() {
         {/* Logo */}
         <div className="flex items-center justify-center gap-4 mb-8">
           <img src="/squeegee-icon.svg" style={{ width: '56px', height: '56px' }} />
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">squeegee</h1>
-            <p className="text-xs font-semibold tracking-widest" style={{ color: '#4ade80' }}>PRODUCTION TRACKING</p>
-          </div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">scribilis</h1>
         </div>
 
         {/* Card */}

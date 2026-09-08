@@ -20,7 +20,7 @@ export default function Navbar() {
   return (
     <header className="h-14 bg-surface border-b border-border flex items-center px-4 gap-4 shrink-0 z-40">
       <Link to="/projects" className="flex items-center group">
-        <img src={theme === 'light' ? SqueegeeLogoLight : SqueegeeLogoDark} alt="Squeegee" className="h-8 w-auto" />
+        <img src={theme === 'light' ? SqueegeeLogoLight : SqueegeeLogoDark} alt="Scribilis" className="h-8 w-auto" />
       </Link>
 
       {!isCanvas && (

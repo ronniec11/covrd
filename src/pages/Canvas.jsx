@@ -2376,7 +2376,7 @@ export default function Canvas() {
     // ── EXPORT ────────────────────────────────────────────────────────────────
     function exportAll() {
       const date = getCurrentDate()
-      let txt = 'Squeegee - Daily Report\nDate: ' + date + '\n\n'; let grand = 0
+      let txt = 'Scribilis - Daily Report\nDate: ' + date + '\n\n'; let grand = 0
       pages.forEach(pg => {
         txt += '=== ' + pg.name + ' ===\n'
         pg.sessions.forEach((s, i) => {
@@ -2390,7 +2390,7 @@ export default function Canvas() {
       txt += 'GRAND TOTAL: ' + Math.round(grand).toLocaleString() + ' SF\n'
       const blob = new Blob([txt], {type: 'text/plain'})
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
-      a.download = 'squeegee-' + date + '.txt'; a.click()
+      a.download = 'scribilis-' + date + '.txt'; a.click()
 
       pages.forEach(pg => {
         if (!pg.image) return
@@ -2409,7 +2409,7 @@ export default function Canvas() {
         pg.sessions.forEach(s => { if (s.penCanvas) ec.drawImage(s.penCanvas, 0, 0) })
         const lk = document.createElement('a')
         lk.href = exp.toDataURL('image/png')
-        lk.download = 'squeegee-' + pg.name.replace(/\s+/g, '-') + '-' + date + '.png'
+        lk.download = 'scribilis-' + pg.name.replace(/\s+/g, '-') + '-' + date + '.png'
         lk.click()
       })
     }
