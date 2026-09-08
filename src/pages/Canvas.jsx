@@ -1751,11 +1751,6 @@ export default function Canvas() {
       activePage.sessions.push(session)
       invalidateSessions()
 
-      if (!dayRecords.find(r => r.date === date)) {
-        dayRecords.push({date, target: todayTarget, sessions: [], dayColor: getDayColor(date)})
-        dayRecords.sort((a, b) => b.date.localeCompare(a.date))
-      }
-
       // Clear live canvas after snapshot — saved session visible via sessions cache
       liveHlCtx.clearRect(0, 0, liveHlCanvas.width, liveHlCanvas.height)
       livePenCtx.clearRect(0, 0, livePenCanvas.width, livePenCanvas.height)
@@ -2310,14 +2305,28 @@ export default function Canvas() {
       const rec = dayRecords.find(r => r.date === date)
       return rec ? rec.dayColor : activeColor
     }
+    // Rebuilds dayRecords from scratch, grouping every session (across every
+    // page) by its OWN date — this used to only ever write into TODAY's
+    // record and dump every session ever saved into it regardless of what
+    // date it actually happened on, which is why every other day showed
+    // 0 SF/0% and today showed an absurd total. Existing per-day target
+    // overrides and day colors are preserved across the rebuild.
     function saveDayToHistory() {
-      const date = getCurrentDate()
-      const daySessions = []
-      pages.forEach(pg => pg.sessions.forEach(s => daySessions.push({name:s.name,color:s.color,sf:s.sf,pageName:pg.name,time:s.time})))
-      if (!daySessions.length) return
-      let rec = dayRecords.find(r => r.date === date)
-      if (rec) { rec.sessions = daySessions; rec.target = todayTarget }
-      else { rec = {date,target:todayTarget,sessions:daySessions,dayColor:getDayColor(date)}; dayRecords.push(rec); dayRecords.sort((a,b)=>b.date.localeCompare(a.date)) }
+      const byDate = {}
+      pages.forEach(pg => pg.sessions.forEach(s => {
+        if (!s.date) return
+        if (!byDate[s.date]) byDate[s.date] = []
+        byDate[s.date].push({name: s.name, color: s.color, sf: s.sf, pageName: pg.name, time: s.time})
+      }))
+      const oldTargets = {}
+      dayRecords.forEach(r => { if (r.target) oldTargets[r.date] = r.target })
+      const dates = Object.keys(byDate).sort((a, b) => b.localeCompare(a))
+      dayRecords = dates.map(date => ({
+        date,
+        target: oldTargets[date] ?? (date === getCurrentDate() ? todayTarget : 0),
+        sessions: byDate[date],
+        dayColor: getDayColor(date),
+      }))
     }
     function openHistory() {
       saveDayToHistory()
@@ -2631,10 +2640,6 @@ export default function Canvas() {
         } catch {}
 
         const date = dbSess.work_date || getCurrentDate()
-        if (!dayRecords.find(r => r.date === date)) {
-          dayRecords.push({date, target: todayTarget, sessions: [], dayColor: getDayColor(date)})
-          dayRecords.sort((a, b) => b.date.localeCompare(a.date))
-        }
 
         activePage.sessions.push({
           id:           sessionCounter++,
