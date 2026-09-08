@@ -1581,6 +1581,16 @@ export default function Canvas() {
         // pan/pinch-zoom.
         if (touchPainting) undoLast()
         if (touchJustPlacedMarker) { undoLast(); touchJustPlacedMarker = false }
+        // Same race as the count marker above: the first finger's touchstart
+        // fires (and starts a brand-new LF line) before the second finger
+        // registers as a pinch. If that line never got past its first point,
+        // it was never a real line the user meant to draw — discard it so
+        // the next single tap starts fresh instead of extending this stray
+        // point into an unintended segment.
+        if (activeLFLine && !activeLFLine.finished && activeLFLine.points.length <= 1) {
+          activeLFLine = null
+          drawActiveLFPreview()
+        }
         touchPainting = false; lastTouchPt = null; rectHandle = null
         polyDragMode = null; polyVertexIdx = null
         lfDragMode = null; lfVertexIdx = null
