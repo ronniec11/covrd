@@ -2316,7 +2316,7 @@ export default function Canvas() {
       pages.forEach(pg => pg.sessions.forEach(s => {
         if (!s.date) return
         if (!byDate[s.date]) byDate[s.date] = []
-        byDate[s.date].push({name: s.name, color: s.color, sf: s.sf, pageName: pg.name, time: s.time})
+        byDate[s.date].push({name: s.name, color: s.color, sf: s.sf, pageName: pg.name, time: s.time, crewSize: s.crewSize || 0, hoursWorked: s.hoursWorked || 0})
       }))
       const oldTargets = {}
       dayRecords.forEach(r => { if (r.target) oldTargets[r.date] = r.target })
@@ -2447,6 +2447,97 @@ export default function Canvas() {
     }
     function formatDate(ds) {
       return new Date(ds+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+    }
+
+    // Opens a standalone, print-ready report (own tab, own light-only
+    // styling — always readable on paper regardless of the app's own
+    // theme) covering every day in dayRecords: an SF-per-day bar, the
+    // labor totals (crew/hours, summed across that day's sessions), and
+    // percent of that day's target.
+    function printDailyReport() {
+      if (!dayRecords.length) { alert('No history to report yet — save a session first.'); return }
+      const days = [...dayRecords].sort((a, b) => b.date.localeCompare(a.date))
+      const maxSF = Math.max(...days.map(d => d.sessions.reduce((a, s) => a + s.sf, 0)), 1)
+
+      let totalSF = 0, totalCrew = 0, totalHours = 0
+      const rows = days.map(d => {
+        const sf = d.sessions.reduce((a, s) => a + s.sf, 0)
+        const crew = d.sessions.reduce((a, s) => a + (s.crewSize || 0), 0)
+        const hours = d.sessions.reduce((a, s) => a + (s.hoursWorked || 0), 0)
+        totalSF += sf; totalCrew += crew; totalHours += hours
+        const pct = d.target > 0 ? Math.round((sf / d.target) * 100) : null
+        const barPct = sf > 0 ? Math.max((sf / maxSF) * 100, 2) : 0
+        return `
+          <tr>
+            <td>${formatDate(d.date)}</td>
+            <td class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${barPct}%;background:${d.dayColor || '#4ade80'}"></div></div></td>
+            <td class="num">${Math.round(sf).toLocaleString()}</td>
+            <td class="num">${crew || '–'}</td>
+            <td class="num">${hours ? hours.toFixed(1) : '–'}</td>
+            <td class="num">${pct !== null ? pct + '%' : '–'}</td>
+          </tr>`
+      }).join('')
+
+      const pageName = activePage?.name || 'Floor Plan'
+      const generated = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+      const range = days.length ? `${formatDate(days[days.length - 1].date)} – ${formatDate(days[0].date)}` : ''
+
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Daily Production Report - ${pageName}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif; color: #1c1c1a; background: #fff; margin: 0; padding: 32px; }
+  h1 { font-size: 20px; margin: 0 0 2px; }
+  .sub { font-size: 12px; color: #6b7280; margin-bottom: 20px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+  th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; font-weight: 700; }
+  td.num, th.num { text-align: right; }
+  .bar-cell { width: 220px; }
+  .bar-track { background: #f1f1ef; border-radius: 3px; height: 10px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; }
+  tfoot td { font-weight: 800; border-top: 2px solid #1c1c1a; border-bottom: none; }
+  .print-btn { position: fixed; top: 16px; right: 16px; background: #16a34a; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; }
+  @media print { .print-btn { display: none; } body { padding: 0; } }
+</style>
+</head>
+<body>
+  <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
+  <h1>${pageName} — Daily Production Report</h1>
+  <div class="sub">${range} &nbsp;•&nbsp; Generated ${generated}</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>SF / Day</th>
+        <th class="num">SF</th>
+        <th class="num">Crew</th>
+        <th class="num">Hours</th>
+        <th class="num">% of Target</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+    <tfoot>
+      <tr>
+        <td>Total</td>
+        <td></td>
+        <td class="num">${Math.round(totalSF).toLocaleString()}</td>
+        <td class="num">${totalCrew || '–'}</td>
+        <td class="num">${totalHours ? totalHours.toFixed(1) : '–'}</td>
+        <td class="num"></td>
+      </tr>
+    </tfoot>
+  </table>
+</body>
+</html>`
+
+      const w = window.open('', '_blank')
+      if (!w) { alert('Please allow pop-ups to view the report.'); return }
+      w.document.write(html)
+      w.document.close()
     }
 
     // ── RESIZE ────────────────────────────────────────────────────────────────
@@ -3017,7 +3108,7 @@ export default function Canvas() {
     api.current = {
       setTool, startCalib, cancelCalib,
       doZoom, resetView,
-      openHistory, closeHistory, calPrevMonth, calNextMonth,
+      openHistory, closeHistory, calPrevMonth, calNextMonth, printDailyReport,
       closeEditModal, saveEdit, startPaintEdit, startCountEdit,
       cancelSessionEdit, commitSessionEdit,
       closeSaveModal, confirmSaveSession,
@@ -3329,6 +3420,7 @@ export default function Canvas() {
             </div>
           </div>
           <div className="ct-cal-footer">
+            <button className="ct-cal-btn" onClick={() => api.current.printDailyReport?.()}>Report</button>
             <button className="ct-cal-btn" onClick={() => api.current.closeHistory?.()}>Done</button>
           </div>
         </div>

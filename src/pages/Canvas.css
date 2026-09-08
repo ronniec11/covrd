@@ -324,8 +324,14 @@
 .ct-cal-right { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 .ct-cal-chart-wrap { padding: 14px 16px; border-bottom: 1px solid var(--ct-border); flex-shrink: 0; }
 .ct-cal-chart-title { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--ct-muted); margin-bottom: 8px; }
-.ct-cal-bars { display: flex; align-items: flex-end; gap: 3px; height: 90px; }
-.ct-cal-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
+.ct-cal-bars { display: flex; gap: 3px; height: 90px; }
+/* height:100% + justify-content:flex-end — .ct-cal-bar's height:X% (set via
+   JS) needs a parent with a DEFINITE height to resolve against; without it
+   the percentage is ignored and every bar just falls back to its min-height,
+   which is why they used to all render as flat, same-height slivers instead
+   of varying with each day's SF. flex-end pushes the bar+label group to the
+   bottom so the bar still visually "grows up" from a shared baseline. */
+.ct-cal-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; min-width: 0; height: 100%; }
 .ct-cal-bar { width: 100%; border-radius: 3px 3px 0 0; min-height: 2px; cursor: pointer; transition: opacity 0.1s; }
 .ct-cal-bar:hover { opacity: 0.75; }
 .ct-cal-bar-lbl { font-size: 8px; color: var(--ct-muted); white-space: nowrap; overflow: hidden; }
@@ -336,6 +342,6 @@
 .ct-cal-legend-date { font-size: 11px; font-weight: 600; flex: 1; color: var(--ct-text); }
 .ct-cal-legend-sf { font-size: 12px; font-weight: 700; }
 .ct-cal-legend-pct { font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: 700; }
-.ct-cal-footer { padding: 10px 16px; border-top: 1px solid var(--ct-border); display: flex; justify-content: flex-end; flex-shrink: 0; }
+.ct-cal-footer { padding: 10px 16px; border-top: 1px solid var(--ct-border); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
 .ct-cal-btn { font-size: 12px; font-weight: 600; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--ct-border); background: var(--ct-surface-2); color: var(--ct-text); cursor: pointer; }
 .ct-cal-btn:hover { border-color: var(--ct-accent); color: var(--ct-accent); }
