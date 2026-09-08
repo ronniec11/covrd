@@ -23,6 +23,17 @@ export default function Profile() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  // Per-device, like the theme toggle — not tied to the account, since it's
+  // about this touchscreen's input, not the user's identity.
+  const [pencilOnly, setPencilOnly] = useState(() => {
+    try { return localStorage.getItem('squeegee_pencil_only') === 'true' } catch { return false }
+  })
+
+  function togglePencilOnly() {
+    const next = !pencilOnly
+    setPencilOnly(next)
+    try { localStorage.setItem('squeegee_pencil_only', String(next)) } catch {}
+  }
 
   async function handleSave(e) {
     e.preventDefault()
@@ -110,6 +121,21 @@ export default function Profile() {
                   />
                 ))}
               </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <label className="label mb-0.5">Apple Pencil Only</label>
+                <p className="text-xs text-muted">On this device, markup tools (Highlight, Rectangle, Polygon, Linear Ft, Count, Pen, Erase) only respond to the Apple Pencil. A finger can still drag to pan and pinch to zoom.</p>
+              </div>
+              <button
+                type="button"
+                onClick={togglePencilOnly}
+                aria-pressed={pencilOnly}
+                className={`relative shrink-0 w-11 h-6 rounded-full transition-colors duration-150 ${pencilOnly ? 'bg-accent' : 'bg-surface-3'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-150 ${pencilOnly ? 'translate-x-5' : ''}`} />
+              </button>
             </div>
 
             {error && (

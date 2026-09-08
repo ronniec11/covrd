@@ -1502,6 +1502,17 @@ export default function Canvas() {
     const MAX_ZOOM = (isSafari || isIPad) ? 3.0 : 10.0
     const MIN_ZOOM = 0.1
 
+    // "Apple Pencil Only" (toggled on the Profile page, per-device via
+    // localStorage — same pattern as the theme toggle): when on, a finger
+    // touch can only pan (one finger) or pinch-zoom (two fingers, handled by
+    // the existing two-finger branch below, unaffected) — it never paints,
+    // erases, or places anything. Only a stylus touch still does that. Read
+    // once per mount; changing it on the Profile page takes effect the next
+    // time a floor plan is opened.
+    let pencilOnlyMode = false
+    try { pencilOnlyMode = localStorage.getItem('squeegee_pencil_only') === 'true' } catch {}
+    let fingerPanning = false, fingerPanLast = null
+
     // Pencil double-tap-to-erase: Apple Pencil's own barrel double-tap
     // gesture (UIPencilInteraction) never reaches web content at all — Safari
     // exposes no event for it — so this recognizes two quick, near-stationary
@@ -1616,6 +1627,7 @@ export default function Canvas() {
         touchPainting = false; lastTouchPt = null; rectHandle = null
         polyDragMode = null; polyVertexIdx = null
         lfDragMode = null; lfVertexIdx = null
+        fingerPanning = false; fingerPanLast = null
         const r = drawEl.getBoundingClientRect()
         const t0 = e.touches[0], t1 = e.touches[1]
         const mx = ((t0.clientX + t1.clientX) / 2) - r.left
@@ -1627,6 +1639,13 @@ export default function Canvas() {
       // Single touch, or a pencil touch (with a resting palm alongside it).
       const pos = getTouchPos(e)
       if (calibrating) { handleCalibClick(pos.x, pos.y); return }
+      if (pencilOnlyMode && !stylusTouch) {
+        // A lone finger, with markup restricted to the Pencil, only pans —
+        // it never draws, erases, or places anything.
+        fingerPanning = true
+        fingerPanLast = pos
+        return
+      }
       if (stylusTouch) {
         const now = Date.now()
         if (lastStylusTapEndPos &&
@@ -1772,6 +1791,12 @@ export default function Canvas() {
         pinchLastMid = {x: mx, y: my}
         return
       }
+      if (fingerPanning) {
+        const pos = getTouchPos(e)
+        panByScreenDelta(pos.x - fingerPanLast.x, pos.y - fingerPanLast.y)
+        fingerPanLast = pos
+        return
+      }
       if (tool === 'rect' && rectHandle) {
         const pos = getTouchPos(e)
         const pt = s2i(pos.x, pos.y)
@@ -1836,6 +1861,7 @@ export default function Canvas() {
       rectHandle = null
       polyDragMode = null; polyVertexIdx = null
       lfDragMode = null; lfVertexIdx = null
+      fingerPanning = false; fingerPanLast = null
       cancelAnimationFrame(rafId); rafId = 0
       clipLiveHLAgainstSessions()
       redrawAll(); updateSF()
